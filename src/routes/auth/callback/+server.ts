@@ -3,9 +3,15 @@
 import { redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
+function safeAppRedirect(next: string | null): string {
+	if (!next) return '/app';
+	if (next === '/app' || next.startsWith('/app/')) return next;
+	return '/app';
+}
+
 export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
 	const code = url.searchParams.get('code');
-	const next = url.searchParams.get('next') ?? '/app';
+	const next = safeAppRedirect(url.searchParams.get('next'));
 
 	if (code && supabase) {
 		const { error } = await supabase.auth.exchangeCodeForSession(code);

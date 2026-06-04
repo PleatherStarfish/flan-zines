@@ -47,19 +47,45 @@ create table if not exists auth.users (
   created_at timestamptz not null default now()
 );
 
--- Supabase's auth.* claim helpers, verbatim: they read the per-request GUC
--- `request.jwt.claims` that PostgREST/GoTrue set. Tests set the same GUC.
+-- Supabase's auth.* claim helpers read the per-claim GUCs that PostgREST
+-- sets for REST requests, with the aggregate `request.jwt.claims` object as the
+-- compatibility fallback. Tests set both forms so policies exercise the same
+-- caller identity whether they use auth.uid(), auth.role(), or auth.jwt().
 create or replace function auth.uid() returns uuid
   language sql stable
-as $$ select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'sub', '')::uuid $$;
+as $$
+  select nullif(
+    coalesce(
+      nullif(current_setting('request.jwt.claim.sub', true), ''),
+      nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'
+    ),
+    ''
+  )::uuid
+$$;
 
 create or replace function auth.role() returns text
   language sql stable
-as $$ select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '')::text $$;
+as $$
+  select nullif(
+    coalesce(
+      nullif(current_setting('request.jwt.claim.role', true), ''),
+      nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'
+    ),
+    ''
+  )::text
+$$;
 
 create or replace function auth.email() returns text
   language sql stable
-as $$ select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'email', '')::text $$;
+as $$
+  select nullif(
+    coalesce(
+      nullif(current_setting('request.jwt.claim.email', true), ''),
+      nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'email'
+    ),
+    ''
+  )::text
+$$;
 
 create or replace function auth.jwt() returns jsonb
   language sql stable

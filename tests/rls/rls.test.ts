@@ -67,21 +67,36 @@ describeDb('RLS — ownership is enforced at the database', () => {
 			).toBe(1);
 		});
 
-		it('denies a peer WRITING another draft (update affects zero rows)', async () => {
-			const res = await asActor(pool, auth(IDS.inkwell), (q) =>
+		it('denies peers WRITING another draft (both directions; updates affect zero rows)', async () => {
+			const inkwellToRiver = await asActor(pool, auth(IDS.inkwell), (q) =>
 				q('update zine_drafts set document=$2 where zine_id=$1', [
 					IDS.draftZineRiver,
-					{ hacked: true }
+					{ hacked: 'inkwell-to-river' }
 				])
 			);
-			expect(res.rowCount).toBe(0);
-			// and the document is untouched when the owner looks
-			const doc = await asActor(pool, auth(IDS.river), (q) =>
+			expect(inkwellToRiver.rowCount).toBe(0);
+
+			const riverToInkwell = await asActor(pool, auth(IDS.river), (q) =>
+				q('update zine_drafts set document=$2 where zine_id=$1', [
+					IDS.draftZineInkwell,
+					{ hacked: 'river-to-inkwell' }
+				])
+			);
+			expect(riverToInkwell.rowCount).toBe(0);
+
+			const riverDoc = await asActor(pool, auth(IDS.river), (q) =>
 				q<{ document: unknown }>('select document from zine_drafts where zine_id=$1', [
 					IDS.draftZineRiver
 				])
 			);
-			expect(doc.rows[0].document).not.toMatchObject({ hacked: true });
+			expect(riverDoc.rows[0].document).not.toMatchObject({ hacked: 'inkwell-to-river' });
+
+			const inkwellDoc = await asActor(pool, auth(IDS.inkwell), (q) =>
+				q<{ document: unknown }>('select document from zine_drafts where zine_id=$1', [
+					IDS.draftZineInkwell
+				])
+			);
+			expect(inkwellDoc.rows[0].document).not.toMatchObject({ hacked: 'river-to-inkwell' });
 		});
 
 		it('denies anon any access to drafts (no table privilege)', async () => {

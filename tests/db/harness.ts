@@ -90,9 +90,8 @@ const ROLES: Role[] = ['anon', 'authenticated', 'service_role'];
 
 /**
  * Run `fn` inside a transaction impersonating `actor`, then ROLLBACK so every
- * test starts from the same seed. Sets the Postgres role and the per-request
- * `request.jwt.claims` GUC that auth.uid()/auth.role() read — identical to how
- * Supabase serves an authenticated request.
+ * test starts from the same seed. Sets the Postgres role plus both Supabase JWT
+ * claim GUC forms: aggregate request.jwt.claims and per-claim request.jwt.claim.*.
  */
 export async function asActor<T>(
 	pool: PoolType,
@@ -101,13 +100,18 @@ export async function asActor<T>(
 ): Promise<T> {
 	const role = actor.role ?? 'authenticated';
 	if (!ROLES.includes(role)) throw new Error(`Unexpected role: ${role}`);
-	const claims = JSON.stringify(actor.sub ? { sub: actor.sub, role } : { role });
+	const claims = actor.sub ? { sub: actor.sub, role } : { role };
 
 	const client = await pool.connect();
 	try {
 		await client.query('begin');
 		await client.query(`set local role ${role}`); // role is whitelisted above
-		await client.query("select set_config('request.jwt.claims', $1, true)", [claims]);
+		await client.query("select set_config('request.jwt.claims', $1, true)", [
+			JSON.stringify(claims)
+		]);
+		await client.query("select set_config('request.jwt.claim.role', $1, true)", [role]);
+		await client.query("select set_config('request.jwt.claim.sub', $1, true)", [actor.sub ?? '']);
+		await client.query("select set_config('request.jwt.claim.email', $1, true)", ['']);
 		return await fn(client.query.bind(client) as Query);
 	} finally {
 		await client.query('rollback').catch(() => {});
