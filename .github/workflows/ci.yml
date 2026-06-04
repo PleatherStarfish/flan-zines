@@ -8,6 +8,24 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # Throwaway Postgres for the RLS + migration suites. The harness applies the
+    # Supabase shim (roles + auth helpers), the real migrations, and the seed, then
+    # proves the policies by impersonating seeded users. Disposable, so the suite's
+    # schema reset is safe.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: zine_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -33,9 +51,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm check
 
-      - name: Unit tests
+      - name: Unit tests (incl. RLS + migration suites against Postgres)
         if: ${{ !cancelled() }}
         run: pnpm test
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:5432/zine_test
 
       - name: Build
         if: ${{ !cancelled() }}

@@ -22,13 +22,25 @@ port = 54323
 [auth]
 enabled = true
 site_url = "http://127.0.0.1:5173"
-additional_redirect_urls = ["http://127.0.0.1:5173"]
+# Auth lands on /auth/callback (OAuth code) or /auth/confirm (magic-link token).
+additional_redirect_urls = [
+  "http://127.0.0.1:5173/auth/callback",
+  "http://127.0.0.1:5173/auth/confirm",
+  "http://localhost:5173/auth/callback",
+  "http://localhost:5173/auth/confirm"
+]
 jwt_expiry = 3600
 enable_signup = true
 
-# Google sign-in is the primary path (ARCHITECTURE.md §9). Enable + fill via env
-# in Step 1; left disabled here so `supabase start` works without credentials.
+[auth.email]
+# Magic-link is the local dev sign-in path; the email is captured by Inbucket.
+enable_signup = true
+enable_confirmations = false
+
+# Google sign-in is the primary production path (ARCHITECTURE.md §9). Enable and
+# supply credentials via env (never commit them); left disabled here so
+# `supabase start` works without Google OAuth credentials.
 [auth.external.google]
 enabled = false
-client_id = ""
-secret = ""
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
