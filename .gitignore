@@ -1,0 +1,22 @@
+node_modules/
+/.svelte-kit/
+/build/
+/dist/
+
+# Secrets — never commit. See .env.example for the documented variables.
+.env
+.env.*
+!.env.example
+
+# Test + tooling output
+/playwright-report/
+/test-results/
+/blob-report/
+/playwright/.cache/
+
+# Supabase local runtime
+/supabase/.branches/
+/supabase/.temp/
+
+*.log
+.DS_Store

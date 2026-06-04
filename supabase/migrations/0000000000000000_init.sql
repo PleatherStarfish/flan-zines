@@ -1,0 +1,4 @@
+-- Initial migration (Step 0) — intentionally empty.
+-- The schema (users/roles, classes, zines, drafts, versions, assets, moderation),
+-- RLS policies, and seed data are added in Step 1. This baseline migration exists
+-- so `supabase start` / `supabase db reset` have something to apply.

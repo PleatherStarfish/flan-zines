@@ -1,0 +1,10 @@
+# Generated / vendored — not ours to format
+.svelte-kit/
+build/
+dist/
+node_modules/
+pnpm-lock.yaml
+playwright-report/
+test-results/
+static/
+supabase/migrations/

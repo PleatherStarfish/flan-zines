@@ -1,0 +1,2 @@
+-- Seed data is added in Step 1: seeded students + a teacher for local development
+-- and for the RLS cross-user deny tests.
