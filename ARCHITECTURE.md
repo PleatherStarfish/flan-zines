@@ -8,6 +8,11 @@ simple Wix-like tools; finished zines are published to a public gallery.
 > below (§3, §5, §16) and the editor/state notes reflect that. The build sequence lives in
 > [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md); the evaluation rubric in [REQUIREMENTS.md](REQUIREMENTS.md).
 
+> **Implementation guidance (for AI):** normative, Pudding-derived best practices for scrollytelling,
+> responsive/performance, charts, and the editorial process live in
+> [docs/best-practices/](docs/best-practices/README.md). Read the relevant one before building a feature
+> it covers — they turn §5's animation system and the editor into specific, citable rules.
+
 ---
 
 ## 1. Goals & Constraints

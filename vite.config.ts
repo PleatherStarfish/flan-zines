@@ -1,12 +1,15 @@
 import { sveltekit } from '@sveltejs/kit/vite';
+import { svelteTesting } from '@testing-library/svelte/vite';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-	plugins: [sveltekit()],
+	// svelteTesting() wires @testing-library/svelte for vitest (client-build
+	// resolution + auto-cleanup); it only affects test runs, not build/dev.
+	plugins: [sveltekit(), svelteTesting()],
 	test: {
-		// Pure-TS unit tests + the Postgres-backed RLS/migration suites both run in
-		// node. The DB suites skip themselves unless SUPABASE_DB_URL is set (see
-		// tests/db/harness.ts). Component tests (jsdom) arrive in Step 2.
+		// Default to node for the pure-TS unit, RLS, and migration suites. Component
+		// tests opt into jsdom per-file with `// @vitest-environment jsdom` and mount
+		// blocks via @testing-library/svelte, then assert + run axe on the result.
 		environment: 'node',
 		include: [
 			'src/**/*.{test,spec}.{js,ts}',

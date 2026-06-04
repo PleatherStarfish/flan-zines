@@ -14,6 +14,15 @@
 	--border: 214 32% 91%;
 }
 
+/* Apply the theme tokens to the page canvas so the background/text are explicit
+   everywhere (not reliant on the browser's default white canvas). */
+@layer base {
+	html {
+		background-color: hsl(var(--background));
+		color: hsl(var(--foreground));
+	}
+}
+
 /* Accessibility safety net: honor prefers-reduced-motion globally. The animation
    system (Step 4) layers richer, per-preset fallbacks on top of this baseline. */
 @media (prefers-reduced-motion: reduce) {

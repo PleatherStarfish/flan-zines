@@ -7,10 +7,12 @@ Wix-like tools; finished zines are published to a public gallery.
 - **Design:** [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Build sequence + per-step review gates:** [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 - **Acceptance rubric (for Codex review):** [REQUIREMENTS.md](REQUIREMENTS.md)
+- **Implementation best practices (for AI):** [docs/best-practices/](docs/best-practices/README.md)
 
-> **Status: Step 1 — Data model, Auth & RLS.** Real accounts (Google SSO + dev magic-link), the full
-> Postgres schema, and deny-by-default Row-Level Security with a cross-user proof suite. See
-> [Accounts, auth & RLS](#accounts-auth--rls-step-1) and [scope notes](#scope-notes).
+> **Status: Step 2 — Document schema, block registry & read-only renderer.** A zine is validated JSON
+> (sections → blocks); the registry-driven `ZineRenderer` turns it into a semantic, accessible page,
+> rendered server-side at `/z/[user]/[slug]`. See [Content model & rendering](#content-model--rendering-step-2)
+> and [scope notes](#scope-notes). (Step 1: accounts + RLS — [Accounts, auth & RLS](#accounts-auth--rls-step-1).)
 
 ---
 
@@ -31,20 +33,23 @@ pnpm dev                    # http://localhost:5173
 
 ## Scripts (the gates)
 
-| Command         | What it does                                   | Gate |
-| --------------- | ---------------------------------------------- | ---- |
-| `pnpm dev`      | Run the app in dev mode                        | —    |
-| `pnpm build`    | Production build (adapter-node)                | ✅   |
-| `pnpm preview`  | Serve the production build                     | —    |
-| `pnpm check`    | `svelte-kit sync` + `svelte-check` (typecheck) | ✅   |
-| `pnpm lint`     | `prettier --check` + `eslint`                  | ✅   |
-| `pnpm format`   | Auto-format with Prettier                      | —    |
-| `pnpm test`     | Unit + RLS/migration suites (Vitest)           | ✅   |
-| `pnpm test:e2e` | End-to-end (Playwright; builds + previews)     | ✅   |
+| Command                | What it does                                     | Gate |
+| ---------------------- | ------------------------------------------------ | ---- |
+| `pnpm dev`             | Run the app in dev mode                          | —    |
+| `pnpm build`           | Production build (adapter-node)                  | ✅   |
+| `pnpm preview`         | Serve the production build                       | —    |
+| `pnpm check`           | `svelte-kit sync` + `svelte-check` (typecheck)   | ✅   |
+| `pnpm lint`            | `prettier --check` + `eslint`                    | ✅   |
+| `pnpm format`          | Auto-format with Prettier                        | —    |
+| `pnpm test`            | Unit + component + RLS/migration suites (Vitest) | ✅   |
+| `pnpm test:e2e`        | End-to-end (Playwright; builds + previews)       | ✅   |
+| `pnpm storybook`       | Run the block catalog at http://localhost:6006   | —    |
+| `pnpm build-storybook` | Build the static block catalog                   | ✅   |
 
 > The **RLS and migration suites** ([`tests/rls`](tests/rls), [`tests/migrations`](tests/migrations))
 > run only when `SUPABASE_DB_URL` points at a **disposable** Postgres (they reset the `public`
 > schema). Unset, they skip and the rest of `pnpm test` still runs. CI provides a throwaway Postgres.
+> Component tests (jsdom + @testing-library/svelte + axe) always run.
 
 **Reproduce the full green build** (what CI does — see [.github/workflows/ci.yml](.github/workflows/ci.yml)):
 
@@ -90,40 +95,58 @@ SUPABASE_DB_URL=postgresql://localhost/zine_test pnpm test      # applies shim+m
 - **Service-role key** is used only by [`src/lib/server/supabase-admin.ts`](src/lib/server/supabase-admin.ts)
   and never reaches the client (lint rule + secret-guard test + `$lib/server` boundary).
 
+## Content model & rendering (Step 2)
+
+A zine is **validated JSON**, not HTML: an ordered list of sections → blocks, each block validated
+against its registered schema (see [`src/lib/zine`](src/lib/zine)).
+
+- **See it:** `pnpm dev`, then open **http://localhost:5173/z/riverwild/why-we-read-at-night** (or click
+  “Preview a sample zine” on the homepage). The page is **server-rendered** from a fixture document.
+- **The contract is the registry.** `ZineDocument` (Zod) is derived from the block registry, so the
+  validator and `ZineRenderer` never drift. The renderer reads only the registry — no hard-coded block
+  list — and imports nothing from the editor, so the public page and the (future) editor preview share
+  one set of `Render` components.
+- **Core blocks:** `heading`, `richText` (links + lists, a safe ProseMirror subset — never `{@html}`),
+  `image` (alt required to **publish**), `linkButton`, `divider`, `spacer`.
+- **Safety:** all URLs are scheme-checked (`SafeUrlSchema` — no `javascript:`/`data:`); the heading
+  outline stays valid (page `<h1>` title → content `h2+`); axe runs on every block in tests.
+- **Add a block:** see the playbook → [docs/adding-a-block.md](docs/adding-a-block.md). New folder +
+  one `registerBlock(...)` line; no core edits.
+- **Browse blocks:** `pnpm storybook` → http://localhost:6006 (a story per block + the full renderer).
+
 ## Project structure
 
 ```
+.storybook/             Storybook config (block catalog)
 src/
   app.css               Tailwind + theme tokens + reduced-motion safety net
   hooks.server.ts       Supabase session binding + /app auth guard
   routes/
-    +page.svelte        home gallery shell
-    login/              sign-in (Google + magic-link)
-    auth/               callback / confirm / signout endpoints
+    +page.svelte        home gallery shell (+ sample-zine link)
+    login/ auth/        sign-in + callback / confirm / signout
     app/                authed area (guarded): "My Zines"
+    z/[user]/[slug]/    public zine page — SSR from a document (Step 2)
   lib/
-    a11y/               reduced-motion store (accessibility plumbing)
-    supabase/           public client config, browser client, DB types
-    server/             server-ONLY code (service-role admin client, role helper)
-    ui/                 shadcn-svelte components (added on demand)
-    editor/             Wix-like authoring canvas        (Step 3)
+    a11y/               reduced-motion store
+    supabase/ server/   auth clients, role helper, service-role admin (server-only)
     zine/
-      schema/           Zod document schema + types      (Step 2)
-      blocks/           one folder per block type        (Step 2)
-      animations/       one folder per animation preset  (Step 4)
-      render/           ZineRenderer (document → page)   (Step 2)
-      theme/            theme tokens                     (Step 2)
-      registry.ts       the block + animation registries (the only extension points)
+      schema/           Zod document contract: document, block, richtext, url, theme, migrate
+      blocks/           one folder per block (schema.ts, Render.svelte, *.stories.ts, index.ts)
+      render/           ZineRenderer + BlockFrame (document → page)
+      registry.ts       block + animation registries (the only extension points)
+      fixtures.ts       sample zine (route + tests + stories)
+      animations/ theme/  (Step 4 / theme system)
 supabase/
   migrations/           schema + RLS (timestamped, forward-only)
   seed.sql              dev users, class, zines for local + RLS tests
 tests/
-  db/                   Supabase shim + harness + down-migration (RLS test infra)
-  rls/                  cross-user RLS proof (real Postgres)
-  migrations/           apply / RLS-coverage / reversibility
+  db/ rls/ migrations/  Supabase shim + harness; cross-user RLS proof; apply/reversibility
   unit/                 Vitest specs (e.g. the secret-guard)
-  e2e/                  Playwright specs (auth guard + UI)
+  e2e/                  Playwright specs (auth guard, zine SSR page)
 ```
+
+> Component/contract tests are **colocated** under `src/lib/zine/**` (`*.test.ts`), where the
+> ≥80% coverage target applies; cross-cutting specs live under `tests/`.
 
 ## Conventions enforced from Step 0
 
@@ -138,6 +161,21 @@ tests/
 ## Scope notes
 
 Deliberate, documented deviations so review is judged against intent, not guesswork:
+
+**Step 2**
+
+- **Component a11y tests use client-mount + axe, not an SSR-string snapshot.** Under jsdom, Svelte
+  resolves its client build, which conflicts with `svelte/server`. So blocks/renderer are mounted via
+  `@testing-library/svelte` and axed there; the **real SSR** of the public page is verified by a
+  Playwright test that loads `/z/...` with **JavaScript disabled**.
+- **Animations are stored but not applied.** Blocks/sections carry validated `animation` descriptors;
+  the renderer renders statically (the reduced-motion / graceful-degradation baseline). The animation
+  system that applies them lands in Step 4 — `allowedAnimations` names are forward-declarations until
+  then.
+- **`richText` renders a constrained ProseMirror subset** (paragraphs, lists, bold/italic/link) — never
+  arbitrary HTML. TipTap (which produces this JSON) is an _editor_ dependency, added in Step 3.
+- **Zod ships in the page bundle for now.** Splitting validation (server) from render (client) is a
+  Step 5 perf optimization; the C4 budget targets the heavy animation libs (GSAP/Three/D3), not Zod.
 
 **Step 1**
 

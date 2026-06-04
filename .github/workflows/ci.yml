@@ -61,6 +61,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm build
 
+      - name: Build Storybook (block catalog compiles)
+        if: ${{ !cancelled() }}
+        run: pnpm build-storybook
+
       - name: Install Playwright browser
         if: ${{ !cancelled() }}
         run: pnpm exec playwright install --with-deps chromium

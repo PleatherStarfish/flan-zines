@@ -22,5 +22,14 @@
 		<p class="mt-2 text-sm text-muted-foreground" data-testid="gallery-empty">
 			No zines published yet.
 		</p>
+		<p class="mt-4 text-sm">
+			<a
+				href="/z/riverwild/why-we-read-at-night"
+				class="font-medium text-foreground underline underline-offset-2 hover:text-primary"
+				data-testid="sample-zine-link"
+			>
+				Preview a sample zine →
+			</a>
+		</p>
 	</section>
 </main>

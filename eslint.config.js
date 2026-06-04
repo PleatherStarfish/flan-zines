@@ -61,7 +61,13 @@ export default ts.config(
 			zine: zineRules
 		},
 		rules: {
-			'zine/no-service-role-outside-server': 'error'
+			'zine/no-service-role-outside-server': 'error',
+			// Allow intentionally-unused identifiers prefixed with `_` (e.g. a block
+			// Render that keeps the uniform `props` signature but ignores it).
+			'@typescript-eslint/no-unused-vars': [
+				'error',
+				{ argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }
+			]
 		}
 	},
 	{
@@ -79,7 +85,8 @@ export default ts.config(
 			'dist/',
 			'node_modules/',
 			'playwright-report/',
-			'test-results/'
+			'test-results/',
+			'storybook-static/'
 		]
 	}
 );
