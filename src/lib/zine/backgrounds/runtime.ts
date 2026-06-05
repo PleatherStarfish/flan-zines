@@ -24,6 +24,8 @@ export interface BackgroundDynamic {
 	progress: number;
 	pointer: { x: number; y: number } | null;
 	lowPower: boolean;
+	/** Resolved theme swatch colours (RGB) for theme-aware backgrounds; defaults to none. */
+	palette?: [number, number, number][];
 }
 
 export interface BackgroundRuntimeOptions {
@@ -105,6 +107,7 @@ export function createBackgroundRuntime(opts: BackgroundRuntimeOptions): Backgro
 			progress: dyn.progress,
 			pointer: dyn.pointer,
 			lowPower: dyn.lowPower,
+			palette: dyn.palette ?? [],
 			width: canvas.width,
 			height: canvas.height,
 			time: t - startTime,

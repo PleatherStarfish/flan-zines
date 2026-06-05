@@ -224,6 +224,31 @@ therefore receives resolved `dataSources` in the fallback context and emits eith
 
 ## 7. Theme & typography
 
+> **⚠️ Theme model — v4 (implemented).** The theme expanded from `{ palette?, fontPair?, accent? }` to a
+> **role→colour model** (`schemaVersion 4`, additive + a lossless 3→4 migration in `schema/migrate.ts`):
+>
+> ```ts
+> Theme = {
+>   fontPair?,                          // unchanged — keys the font-pair registry
+>   preset?: string,                    // the applied catalogue theme's id (for relinking in the UI)
+>   swatches?: HexColor[],              // the theme's source palette — the pool the editor offers (≤12)
+>   colors?: {                          // the source of truth the renderer reads (one HexColor per role)
+>     background, text, heading, accent, muted
+>   },
+>   palette?, accent?                   // LEGACY v3 keys — kept; themeVars() falls back to them
+> }
+> ```
+>
+> `colors` resolves to `--zine-bg/fg/heading/accent/muted`; `swatches` is what the **colour tool** lets
+> students browse, **assign to elements** (each role → a swatch or a custom colour), and **customize**
+> (editing a swatch re-points every role bound to it). Every value stays `HexColorSchema`-validated
+> (safety in the schema); the editor shows a live **WCAG contrast badge** and **warns rather than blocks**
+> on a low-contrast custom pick. A **wide curated catalogue** is derived (via `culori`) from a
+> palette dataset, kept **editor-only** (never in the public reader bundle). Generative scene
+> backgrounds (e.g. the Canvas2D soft-cloud gradient) read these same colours via `BackgroundInput.palette`
+> ([adding-a-background.md](../adding-a-background.md)). Everything below is the v2/v3 baseline this
+> superseded.
+
 `Theme = { palette?, fontPair?, accent? }` [IMPLEMENTED shape]; `accent` is a `HexColor`
 (injection-safe regex in `schema/theme.ts`). The v2 system makes `palette`/`fontPair` **keys into
 curated registries** [COMMITTED Step 3]:

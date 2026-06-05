@@ -14,8 +14,15 @@
 	let {
 		background,
 		progress = 0,
-		pinned = false
-	}: { background?: SceneBackground; progress?: number; pinned?: boolean } = $props();
+		pinned = false,
+		themePalette = []
+	}: {
+		background?: SceneBackground;
+		progress?: number;
+		pinned?: boolean;
+		/** Theme swatch colours (RGB) a theme-aware canvas preset paints with. */
+		themePalette?: [number, number, number][];
+	} = $props();
 
 	const fill = $derived(background?.fill);
 	const overlay = $derived(background?.overlay);
@@ -66,7 +73,8 @@
 					getDynamic: () => ({
 						progress: progress ?? 0,
 						pointer: def.needsPointer ? pointerValue : null,
-						lowPower
+						lowPower,
+						palette: themePalette
 					})
 				});
 			})
@@ -135,13 +143,15 @@
 		overflow: hidden;
 		pointer-events: none;
 	}
-	/* Pinned scenes: a full-viewport sticky backdrop behind the pinned content. `100vh` is
-	   fine here (decorative, not gating a scroll trigger); the canvas reads its real px size
-	   from a ResizeObserver, so mobile-navbar height changes just re-size it. */
+	/* Pinned scenes: a full-viewport sticky backdrop behind the pinned content. `dvh` fills the
+	   visible viewport (navbar-aware) so the backdrop never leaves a strip uncovered; the canvas
+	   reads its real px size from a ResizeObserver, so a height change just re-sizes it. `vh` is
+	   the fallback for old engines. */
 	.zine-bg.is-pinned {
 		position: sticky;
 		top: 0;
 		height: 100vh;
+		height: 100dvh;
 	}
 	.zine-bg__media {
 		position: absolute;

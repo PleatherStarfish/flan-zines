@@ -3,12 +3,14 @@
 	import type { Act, Scene, SceneType } from '$lib/zine/schema/document';
 	import type { EditorStore } from './store.svelte';
 	import SceneMiniPreview from './SceneMiniPreview.svelte';
+	import ThemePanel from './ThemePanel.svelte';
 
 	let { store, onOpenScene }: { store: EditorStore; onOpenScene: (sceneId: string) => void } =
 		$props();
 
 	let addingForActId = $state<string | null>(null);
 	let draggedSceneId = $state<string | null>(null);
+	let showTheme = $state(false);
 
 	const sceneChoices: { type: SceneType; label: string }[] = [
 		{ type: 'page', label: 'Just writing' },
@@ -97,6 +99,14 @@
 			<h2 id="story-map-title" class="story-map__title">Story map</h2>
 		</div>
 		<div class="story-map__actions">
+			<button
+				type="button"
+				class="secondary-button"
+				aria-haspopup="dialog"
+				onclick={() => (showTheme = true)}
+			>
+				🎨 Colours
+			</button>
 			<button type="button" class="secondary-button" onclick={() => addScene(undefined, 'page')}>
 				Add scene
 			</button>
@@ -221,6 +231,27 @@
 		{/each}
 	</div>
 </section>
+
+{#if showTheme}
+	<!-- The colour tool is document-level, so it opens from the story map (not a scene). -->
+	<div class="theme-drawer" role="dialog" aria-modal="true" aria-label="Colours">
+		<button
+			type="button"
+			class="theme-drawer__scrim"
+			aria-label="Close colours"
+			onclick={() => (showTheme = false)}
+		></button>
+		<div class="theme-drawer__panel">
+			<header class="theme-drawer__header">
+				<h2>Colours</h2>
+				<button type="button" class="small-button" onclick={() => (showTheme = false)}>Done</button>
+			</header>
+			<div class="theme-drawer__body">
+				<ThemePanel {store} />
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.story-map {
@@ -449,6 +480,47 @@
 	}
 	.drop-end {
 		height: 0.35rem;
+	}
+	/* Colour tool drawer: a right-side panel over a dimming scrim. */
+	.theme-drawer {
+		position: fixed;
+		inset: 0;
+		z-index: 60;
+		display: flex;
+		justify-content: flex-end;
+	}
+	.theme-drawer__scrim {
+		position: absolute;
+		inset: 0;
+		border: 0;
+		background: hsl(var(--foreground) / 0.4);
+		cursor: pointer;
+	}
+	.theme-drawer__panel {
+		position: relative;
+		display: flex;
+		width: min(24rem, 100%);
+		flex-direction: column;
+		border-left: 1px solid hsl(var(--border));
+		background: hsl(var(--background));
+		box-shadow: -8px 0 24px hsl(var(--foreground) / 0.15);
+	}
+	.theme-drawer__header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		border-bottom: 1px solid hsl(var(--border));
+		padding: 0.9rem 1.1rem;
+	}
+	.theme-drawer__header h2 {
+		margin: 0;
+		font-size: 1.1rem;
+		font-weight: 750;
+	}
+	.theme-drawer__body {
+		flex: 1 1 auto;
+		overflow-y: auto;
+		padding: 1.1rem;
 	}
 	@media (max-width: 720px) {
 		.story-map__header,

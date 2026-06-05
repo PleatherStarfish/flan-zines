@@ -8,7 +8,7 @@ const shadowKey = 'zine-draft-shadow:z-shadow';
 
 function documentWithText(text: string): ZineDocument {
 	return {
-		schemaVersion: 3,
+		schemaVersion: 4,
 		acts: [
 			{
 				id: 'act_1',

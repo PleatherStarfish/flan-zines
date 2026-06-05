@@ -2,12 +2,16 @@
 	import { onMount } from 'svelte';
 	import { setBlockDecoration } from '$lib/zine/render/context';
 	import ZineRenderer from '$lib/zine/render/ZineRenderer.svelte';
+	import { themeVars } from '$lib/zine/theme/registry';
 	import type { EditorStore } from './store.svelte';
 	import Toolbar from './Toolbar.svelte';
 	import StoryMap from './StoryMap.svelte';
 	import SceneEditor from './SceneEditor.svelte';
 
 	let { store, title }: { store: EditorStore; title: string } = $props();
+
+	// Theme the whole preview surface so it matches the zine (no white bars around it).
+	const previewStyle = $derived(themeVars(store.doc.theme));
 	let surface = $state<'map' | 'scene'>('map');
 	let activeSceneId = $state<string | null>(null);
 
@@ -54,7 +58,7 @@
 {#if store.mode === 'preview'}
 	<!-- A true reader view: the exact ZineRenderer the public page uses, full-width with
 	     real scroll-driven motion. The only editor affordance is the Back button. -->
-	<div class="reader-preview">
+	<div class="reader-preview" style={previewStyle}>
 		<ZineRenderer document={store.doc} {title} drive />
 	</div>
 	<button type="button" class="reader-preview__back" onclick={exitPreview}>
@@ -80,9 +84,9 @@
 		inset: 0;
 		z-index: 50;
 		overflow-y: auto;
-		background: hsl(var(--background));
-		/* Matches the public reader page's breathing room (routes/z/[user]/[slug]). */
-		padding: 3rem 0 5rem;
+		/* Themed surface (var set via previewStyle) so the zine fills the window edge-to-edge
+		   with no white bars — breathing room lives inside the zine itself. */
+		background: var(--zine-bg);
 	}
 	.reader-preview__back {
 		position: fixed;

@@ -11,7 +11,7 @@ const wrap = (block: unknown) => ({
 describe('document schema', () => {
 	it('parses the sample fixture as the current v3 story model', () => {
 		const doc = parseDocument(sampleZineRaw);
-		expect(doc.schemaVersion).toBe(3);
+		expect(doc.schemaVersion).toBe(4);
 		expect(doc.acts).toHaveLength(1);
 		expect(doc.acts[0].scenes).toHaveLength(2);
 		expect(doc.acts[0].scenes[0].type).toBe('page');
@@ -28,7 +28,7 @@ describe('document schema', () => {
 
 	it('rejects a page scene without exactly one beat at 0', () => {
 		const result = safeParseDocument({
-			schemaVersion: 3,
+			schemaVersion: 4,
 			acts: [
 				{
 					id: 'act',
@@ -50,7 +50,7 @@ describe('document schema', () => {
 
 	it('rejects an element anchorBeat outside its scene', () => {
 		const result = safeParseDocument({
-			schemaVersion: 3,
+			schemaVersion: 4,
 			acts: [
 				{
 					id: 'act',
@@ -151,7 +151,7 @@ describe('document schema', () => {
 
 	it('accepts an explicit per-scene scrollLength and resolves scroll distance', () => {
 		const doc = parseDocument({
-			schemaVersion: 3,
+			schemaVersion: 4,
 			acts: [
 				{
 					id: 'act',
@@ -180,7 +180,7 @@ describe('document schema', () => {
 	it('accepts a scene scrollAxis and rejects an unknown one', () => {
 		const make = (axis: string) =>
 			safeParseDocument({
-				schemaVersion: 3,
+				schemaVersion: 4,
 				acts: [
 					{
 						id: 'act',
@@ -206,7 +206,7 @@ describe('document schema', () => {
 	it('validates scene background fills (media URLs + registry-backed canvas presets)', () => {
 		const withBg = (background: unknown) =>
 			safeParseDocument({
-				schemaVersion: 3,
+				schemaVersion: 4,
 				acts: [
 					{
 						id: 'act',
@@ -262,7 +262,7 @@ describe('document schema', () => {
 
 	it('rejects a scrollLength outside the supported range', () => {
 		const result = safeParseDocument({
-			schemaVersion: 3,
+			schemaVersion: 4,
 			acts: [
 				{
 					id: 'act',

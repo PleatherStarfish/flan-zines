@@ -8,7 +8,7 @@ import type { SaveResult } from './autosave';
 
 function setup() {
 	const document = {
-		schemaVersion: 3,
+		schemaVersion: 4,
 		theme: {},
 		acts: [
 			{

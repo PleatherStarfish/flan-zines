@@ -45,7 +45,7 @@ describe('ZineRenderer', () => {
 
 	it('applies timeline scrub state only when the editor preview provides scene progress', () => {
 		const document = parseDocument({
-			schemaVersion: 3,
+			schemaVersion: 4,
 			theme: {},
 			acts: [
 				{
@@ -100,7 +100,7 @@ describe('ZineRenderer', () => {
 	it('sizes and pins a timeline scene to its scroll distance, but leaves page scenes in flow', () => {
 		const make = (type: string, scrollLength?: number) =>
 			parseDocument({
-				schemaVersion: 3,
+				schemaVersion: 4,
 				acts: [
 					{
 						id: 'act',
@@ -125,10 +125,11 @@ describe('ZineRenderer', () => {
 				]
 			}) satisfies ZineDocument;
 
-		// A reveal scene with scrollLength 6 → 600vh tall, content pinned.
+		// A reveal scene with scrollLength 6 → 600svh tall, content pinned (svh, not vh, so a
+		// mobile navbar toggle doesn't jump the scroll triggers — responsive-and-performance §3).
 		const pinned = render(ZineRenderer, { props: { document: make('reveal', 6) } });
 		const section = pinned.container.querySelector('.zine-scene');
-		expect(section?.getAttribute('style')).toMatch(/min-height:\s*600vh/);
+		expect(section?.getAttribute('style')).toMatch(/min-height:\s*600svh/);
 		expect(pinned.container.querySelector('.zine-scene__inner.is-pinned')).toBeTruthy();
 		pinned.unmount();
 
@@ -148,7 +149,7 @@ describe('ZineRenderer', () => {
 
 	it('renders a side-scroll scene as a stage of actors that pans with scroll progress', () => {
 		const document = parseDocument({
-			schemaVersion: 3,
+			schemaVersion: 4,
 			acts: [
 				{
 					id: 'act',
@@ -207,7 +208,7 @@ describe('ZineRenderer', () => {
 		})) as typeof window.matchMedia;
 		try {
 			const document = parseDocument({
-				schemaVersion: 3,
+				schemaVersion: 4,
 				acts: [
 					{
 						id: 'act',

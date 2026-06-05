@@ -1,3 +1,5 @@
+import type { Theme, ThemeColors } from '../schema/theme';
+
 // Curated theme registries (data-model.md §7). Palettes and font pairs are KEYS the
 // document stores; the renderer resolves them to CSS variables. Each palette is
 // pre-checked for legibility, and accents are a curated, pre-contrasted set — students
@@ -103,18 +105,65 @@ export function fontPairById(id: string | undefined): FontPair {
 	return FONT_PAIRS.find((f) => f.id === id) ?? FONT_PAIRS[0];
 }
 
-/** Resolve a document theme to the CSS custom properties the renderer applies. */
-export function themeVars(
-	theme: { palette?: string; fontPair?: string; accent?: string } | undefined
-): string {
+/**
+ * Resolve a theme to its five role colours. Prefers the v4 `colors` map; falls back to the
+ * legacy `palette`/`accent` keys (then the default palette) so older documents still render.
+ * Pure and culori-free — safe on the public reader path.
+ */
+export function resolveThemeColors(theme: Theme | undefined): ThemeColors {
+	if (theme?.colors) return theme.colors;
 	const palette = paletteById(theme?.palette);
-	const font = fontPairById(theme?.fontPair);
 	const accent = theme?.accent ?? palette.accents[0];
+	return {
+		background: palette.bg,
+		text: palette.fg,
+		heading: palette.fg,
+		accent,
+		muted: palette.muted
+	};
+}
+
+/**
+ * The theme's source palette — the swatch pool the editor offers and the colours a
+ * theme-aware background may draw from. Uses the explicit `swatches` when present, else the
+ * resolved role colours. Culori-free (reader-safe).
+ */
+export function themeSwatches(theme: Theme | undefined): string[] {
+	if (theme?.swatches?.length) return theme.swatches;
+	const c = resolveThemeColors(theme);
+	return [...new Set([c.accent, c.background, c.text, c.muted, c.heading])];
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+	let h = hex.replace('#', '').trim();
+	if (h.length === 3)
+		h = h
+			.split('')
+			.map((c) => c + c)
+			.join('');
+	const n = Number.parseInt(h, 16);
+	return Number.isNaN(n) ? [0, 0, 0] : [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/**
+ * The theme's swatch pool as RGB triplets (0–255) — what a theme-aware background is fed so
+ * it can paint with the student's colours. Culori-free (a tiny hex parser), so it stays on
+ * the public reader path.
+ */
+export function themeSwatchesRgb(theme: Theme | undefined): [number, number, number][] {
+	return themeSwatches(theme).map(hexToRgb);
+}
+
+/** Resolve a document theme to the CSS custom properties the renderer applies. */
+export function themeVars(theme: Theme | undefined): string {
+	const font = fontPairById(theme?.fontPair);
+	const colors = resolveThemeColors(theme);
 	return [
-		`--zine-bg:${palette.bg}`,
-		`--zine-fg:${palette.fg}`,
-		`--zine-muted:${palette.muted}`,
-		`--zine-accent:${accent}`,
+		`--zine-bg:${colors.background}`,
+		`--zine-fg:${colors.text}`,
+		`--zine-heading:${colors.heading}`,
+		`--zine-muted:${colors.muted}`,
+		`--zine-accent:${colors.accent}`,
 		`--zine-font-heading:${font.heading}`,
 		`--zine-font-body:${font.body}`
 	].join(';');

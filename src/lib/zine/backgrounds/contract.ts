@@ -8,7 +8,7 @@ import type { KnobMeta } from '../animations/contract';
 // resize, reduced-motion still-frame, teardown); a preset is a pure DRAW given inputs.
 export type { KnobMeta };
 
-export type BackgroundEngine = 'canvas2d' | 'p5' | 'three' | 'd3';
+export type BackgroundEngine = 'canvas2d' | 'webgl' | 'p5' | 'three' | 'd3';
 
 /** Reduced-motion fallback policy. `still-frame` = draw one frame then stop; `off` = blank. */
 export type BackgroundReducedMotion = 'static' | 'still-frame' | 'off';
@@ -27,6 +27,12 @@ export interface BackgroundInput {
 	reducedMotion: boolean;
 	/** Small/low-power screen — presets MUST halve density when true. */
 	lowPower: boolean;
+	/**
+	 * The document theme's swatch colours (RGB, 0–255), in theme order. Lets a theme-aware
+	 * background draw from the student's own palette instead of a fixed tint. Empty when the
+	 * theme has no swatches; the runtime always supplies the array (never undefined).
+	 */
+	palette: [number, number, number][];
 }
 
 /** A live background. `resize` is called before the first `frame` and on every size change. */

@@ -31,7 +31,7 @@ describe('document migrations', () => {
 				{ id: 'sec_c', layout: 'split', blocks: [] }
 			]
 		});
-		expect(raw.schemaVersion).toBe(3);
+		expect(raw.schemaVersion).toBe(4);
 		const acts = raw.acts as Array<{ scenes: Array<Record<string, unknown>> }>;
 		expect(acts).toHaveLength(1);
 		expect(acts[0].scenes.map((scene) => scene.type)).toEqual(['page', 'feature', 'feature']);
@@ -57,7 +57,7 @@ describe('document migrations', () => {
 			]
 		});
 
-		expect(doc.schemaVersion).toBe(3);
+		expect(doc.schemaVersion).toBe(4);
 		expect(doc.acts).toHaveLength(1);
 		expect(doc.acts[0].scenes.map((scene) => scene.type)).toEqual(['feature', 'page']);
 		expect(doc.acts[0].scenes[0].presentation).toEqual({
@@ -119,5 +119,34 @@ describe('document migrations', () => {
 		expect(scene.elements.map((element) => element.track)).toEqual(['media', 'content', 'content']);
 		expect(scene.elements[1].anchorBeat).toBe('beat_s1');
 		expect(scene.elements[2].anchorBeat).toBe('beat_s2');
+	});
+
+	it('migrates a v3 theme (palette/accent) into the v4 colour model losslessly', () => {
+		const doc = parseDocument({
+			schemaVersion: 3,
+			theme: { palette: 'dusk', fontPair: 'mono', accent: '#38bdf8' },
+			acts: [{ id: 'act_1', scenes: [] }]
+		});
+		expect(doc.schemaVersion).toBe(4);
+		// Legacy keys resolve to the same colours the dusk palette rendered (appearance preserved).
+		expect(doc.theme?.colors).toEqual({
+			background: '#161a23',
+			text: '#f1f5f9',
+			heading: '#f1f5f9',
+			accent: '#38bdf8',
+			muted: '#94a3b8'
+		});
+		// The chosen accent leads the swatch pool; fontPair is carried forward.
+		expect(doc.theme?.swatches?.[0]).toBe('#38bdf8');
+		expect(doc.theme?.fontPair).toBe('mono');
+		// The now-redundant legacy keys are dropped once resolved into `colors`.
+		expect(doc.theme && 'palette' in doc.theme).toBe(false);
+		expect(doc.theme && 'accent' in doc.theme).toBe(false);
+	});
+
+	it('leaves a themeless v3 document themeless after the 3→4 migration', () => {
+		const doc = parseDocument({ schemaVersion: 3, acts: [{ id: 'act_1', scenes: [] }] });
+		expect(doc.schemaVersion).toBe(4);
+		expect(doc.theme).toBeUndefined();
 	});
 });

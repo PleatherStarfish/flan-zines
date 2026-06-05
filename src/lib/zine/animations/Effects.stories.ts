@@ -8,7 +8,7 @@ import type { ZineDocument } from '../schema/document';
 // deterministic seek the design calls for (scene-timeline.md §8; visual-test discipline
 // in IMPLEMENTATION_PLAN §3) — so reviewers can see each effect mid-flight.
 const document: ZineDocument = parseDocument({
-	schemaVersion: 3,
+	schemaVersion: 4,
 	theme: {},
 	acts: [
 		{

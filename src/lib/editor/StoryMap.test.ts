@@ -11,7 +11,7 @@ const okSave = async (): Promise<SaveResult> => ({ ok: true, clientRev: 1, updat
 
 function makeStore(): EditorStore {
 	const document = {
-		schemaVersion: 3,
+		schemaVersion: 4,
 		theme: {},
 		acts: [
 			{

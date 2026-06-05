@@ -6,7 +6,7 @@
 		type Scene,
 		type ZineDocument
 	} from '../schema/document';
-	import { themeVars } from '../theme/registry';
+	import { themeVars, themeSwatchesRgb } from '../theme/registry';
 	import { reducedMotion } from '$lib/a11y/reduced-motion';
 	import BlockFrame from './BlockFrame.svelte';
 	import SceneBackground from './SceneBackground.svelte';
@@ -39,6 +39,9 @@
 	} = $props();
 
 	const rootStyle = $derived(themeVars(document.theme));
+	// The theme's swatch colours (RGB) handed to theme-aware canvas backgrounds so a
+	// generative background paints with the student's palette.
+	const themePalette = $derived(themeSwatchesRgb(document.theme));
 	const rm = $derived($reducedMotion);
 
 	// Effect ids actually used anywhere in the document.
@@ -148,7 +151,12 @@
 	function sceneSectionStyle(scene: Scene): string | undefined {
 		const parts: string[] = [];
 		if (scene.background?.color) parts.push(`background:${scene.background.color}`);
-		if (isPinned(scene)) parts.push(`min-height:${Math.round(sceneScrollScreens(scene) * 100)}vh`);
+		if (isPinned(scene)) {
+			// The scroll-range height uses `svh` (the *stable* small viewport) so a mobile
+			// navbar toggling doesn't resize the range and jump the scroll triggers
+			// (responsive-and-performance.md §3). svh is Baseline-2023 (fine on Chromebooks).
+			parts.push(`min-height:${Math.round(sceneScrollScreens(scene) * 100)}svh`);
+		}
 		return parts.length ? parts.join(';') : undefined;
 	}
 
@@ -188,7 +196,12 @@
 					style={sceneSectionStyle(scene)}
 				>
 					{#if scene.background?.fill || scene.background?.overlay}
-						<SceneBackground background={scene.background} {progress} pinned={isPinned(scene)} />
+						<SceneBackground
+							background={scene.background}
+							{progress}
+							pinned={isPinned(scene)}
+							{themePalette}
+						/>
 					{/if}
 					<div
 						class="zine-scene__inner"
@@ -255,6 +268,7 @@
 	.zine {
 		--zine-bg: #fbfaf7;
 		--zine-fg: #14181f;
+		--zine-heading: #14181f;
 		--zine-muted: #6b7280;
 		--zine-accent: hsl(var(--primary));
 		--zine-font-heading: ui-serif, Georgia, serif;
@@ -264,6 +278,10 @@
 		color: var(--zine-fg);
 		font-family: var(--zine-font-body);
 		line-height: 1.6;
+		/* The themed surface fills the window so the zine never floats in a white box at any
+		   size (dvh = the visible viewport, navbar-aware; vh fallback for old engines). */
+		min-height: 100vh;
+		min-height: 100dvh;
 		/* Off-screen entrances (fly-in / slide) translate past the edge — clip so they never
 		   add a horizontal scrollbar. `clip` (not `hidden`) keeps sticky pinning working. */
 		overflow-x: clip;
@@ -271,12 +289,15 @@
 	.zine-title {
 		max-width: var(--zine-measure);
 		margin: 0 auto 2rem;
-		padding: 0 1.25rem;
+		/* Breathing room above the title now lives inside the themed surface (the page/preview
+		   wrapper no longer adds white padding around the zine). */
+		padding: clamp(2rem, 7vh, 4.5rem) 1.25rem 0;
 		font-family: var(--zine-font-heading);
 		font-size: clamp(2.25rem, 5vw, 3.5rem);
 		font-weight: 800;
 		line-height: 1.1;
 		letter-spacing: -0.02em;
+		color: var(--zine-heading, var(--zine-fg));
 	}
 	.zine-scene {
 		position: relative;
@@ -295,6 +316,7 @@
 		top: 0;
 		display: flex;
 		min-height: 100vh;
+		min-height: 100dvh;
 		flex-direction: column;
 		justify-content: center;
 		overflow: hidden;
@@ -315,6 +337,7 @@
 		position: sticky;
 		top: 0;
 		height: 100vh;
+		height: 100dvh;
 	}
 	.zine-stage {
 		position: absolute;
@@ -352,6 +375,7 @@
 		font-weight: 700;
 		line-height: 1.2;
 		letter-spacing: -0.01em;
+		color: var(--zine-heading, var(--zine-fg));
 	}
 	:global(.zine h2.zine-heading) {
 		font-size: 1.9rem;

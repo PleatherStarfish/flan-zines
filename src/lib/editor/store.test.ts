@@ -8,7 +8,7 @@ const okSave = async (): Promise<SaveResult> => ({ ok: true, clientRev: 1, updat
 
 function makeStore(): EditorStore {
 	const document = {
-		schemaVersion: 3,
+		schemaVersion: 4,
 		theme: {},
 		acts: [
 			{
@@ -225,5 +225,52 @@ describe('EditorStore', () => {
 			level: 2
 		});
 		expect(reparsed.acts[0].scenes[1].type).toBe('feature');
+	});
+
+	it('applies a curated theme preset and assigns a colour to a role', () => {
+		const s = makeStore();
+		store = s;
+		s.applyThemePreset({
+			id: 'np-7',
+			swatches: ['#102030', '#f0f0f0', '#ff6a3d'],
+			colors: {
+				background: '#f0f0f0',
+				text: '#102030',
+				heading: '#102030',
+				accent: '#ff6a3d',
+				muted: '#557788'
+			}
+		});
+		expect(s.doc.theme?.preset).toBe('np-7');
+		expect(s.doc.theme?.swatches).toEqual(['#102030', '#f0f0f0', '#ff6a3d']);
+		expect(s.doc.theme?.colors?.background).toBe('#f0f0f0');
+
+		s.setThemeRole('heading', '#ff6a3d');
+		expect(s.doc.theme?.colors?.heading).toBe('#ff6a3d');
+		// Other roles are untouched.
+		expect(s.doc.theme?.colors?.text).toBe('#102030');
+	});
+
+	it('re-points roles bound to a swatch when that swatch is edited', () => {
+		const s = makeStore();
+		store = s;
+		s.applyThemePreset({
+			id: 'np-1',
+			swatches: ['#111111', '#eeeeee', '#3366ff'],
+			colors: {
+				background: '#eeeeee',
+				text: '#111111',
+				heading: '#111111',
+				accent: '#3366ff',
+				muted: '#888888'
+			}
+		});
+		// Edit swatch 0 (#111111), which both text and heading point at → both follow.
+		s.setThemeSwatch(0, '#202020');
+		expect(s.doc.theme?.swatches?.[0]).toBe('#202020');
+		expect(s.doc.theme?.colors?.text).toBe('#202020');
+		expect(s.doc.theme?.colors?.heading).toBe('#202020');
+		// The accent (a different swatch) is unaffected.
+		expect(s.doc.theme?.colors?.accent).toBe('#3366ff');
 	});
 });

@@ -9,7 +9,9 @@ import { SafeUrlSchema } from './url';
 // The document IS the contract. v3 follows scene-timeline.md §2:
 // Story → Act → Scene → Beat → Element, where each Element wraps a registry block.
 // The block registry remains the single source of truth for content props.
-export const CURRENT_SCHEMA_VERSION = 3 as const;
+// v4 expands the theme to a role→colour model (schema/theme.ts §7); the change is additive
+// (all new theme fields optional) plus a lossless 3→4 migration (schema/migrate.ts).
+export const CURRENT_SCHEMA_VERSION = 4 as const;
 
 // Source-data tier (RESERVED Step 4b). Charts reference a named dataset; large/messy
 // data is processed server-side and never inlined.

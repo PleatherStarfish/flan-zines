@@ -5,6 +5,7 @@
 import type { AnyBackgroundDef, BackgroundDef } from './contract';
 import { driftFieldBackground } from './presets/drift-field';
 import { fishFlockBackground } from './presets/fish-flock';
+import { organicGradientBackground } from './presets/organic-gradient';
 
 const backgrounds = new Map<string, AnyBackgroundDef>();
 
@@ -27,6 +28,7 @@ export function backgroundIds(): string[] {
 	return [...backgrounds.keys()];
 }
 
-// ── The curated catalogue (Canvas2D presets) ────────────────────────────────────────
+// ── The curated catalogue ────────────────────────────────────────────────────────────
 registerBackground(driftFieldBackground);
 registerBackground(fishFlockBackground);
+registerBackground(organicGradientBackground);

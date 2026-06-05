@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { allBackgrounds, getBackground } from '$lib/zine/registry';
+	import { themeSwatches } from '$lib/zine/theme/registry';
 	import type { BackgroundFill, Scene, SceneBackground } from '$lib/zine/schema/document';
 	import type { EditorStore } from './store.svelte';
 
@@ -73,13 +74,22 @@
 		});
 	}
 
+	function canvasParam(key: string): unknown {
+		if (fill?.kind !== 'canvas') return undefined;
+		return (fill.params as Record<string, unknown>)[key];
+	}
+
 	function canvasKnobValue(key: string): string {
-		if (fill?.kind !== 'canvas') return '';
-		const value = (fill.params as Record<string, unknown>)[key];
+		const value = canvasParam(key);
 		return typeof value === 'string' ? value : '';
 	}
 
-	function setCanvasKnob(key: string, value: string): void {
+	function canvasKnobArray(key: string): unknown[] {
+		const value = canvasParam(key);
+		return Array.isArray(value) ? value : [];
+	}
+
+	function setCanvasKnob(key: string, value: unknown): void {
 		if (fill?.kind !== 'canvas') return;
 		const def = getBackground(fill.preset);
 		if (!def) return;
@@ -91,6 +101,31 @@
 			params: (parsed.success ? parsed.data : def.defaults) as Record<string, unknown>
 		});
 	}
+
+	// A `theme-swatches` knob holds indices into the live theme palette; an EMPTY array means
+	// "all colours participate". Toggling materialises the full set first, then removes/adds
+	// one; if every swatch ends up selected we store [] again (canonical "all").
+	function swatchSelected(key: string, index: number): boolean {
+		const current = canvasKnobArray(key) as number[];
+		return current.length === 0 || current.includes(index);
+	}
+
+	function toggleSwatch(key: string, index: number, total: number): void {
+		const current = canvasKnobArray(key) as number[];
+		const base = current.length ? current : Array.from({ length: total }, (_, i) => i);
+		const next = base.includes(index)
+			? base.filter((i) => i !== index)
+			: [...base, index].sort((a, b) => a - b);
+		setCanvasKnob(key, next.length >= total ? [] : next);
+	}
+
+	function toggleOption(key: string, value: string): void {
+		const current = canvasKnobArray(key) as string[];
+		const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+		setCanvasKnob(key, next);
+	}
+
+	const swatches = $derived(themeSwatches(store.doc.theme));
 
 	function setOverlay(opacity: number): void {
 		const next: SceneBackground = { ...(bg ?? {}) };
@@ -166,17 +201,48 @@
 			{#each activeCanvasDef.knobs as knob (knob.key)}
 				<div class="field">
 					<span>{knob.label}</span>
-					<div class="chip-row">
-						{#each knob.options as option (option.value)}
-							<button
-								type="button"
-								aria-pressed={canvasKnobValue(knob.key) === option.value}
-								onclick={() => setCanvasKnob(knob.key, option.value)}
-							>
-								{option.label}
-							</button>
-						{/each}
-					</div>
+					{#if knob.kind === 'theme-swatches'}
+						{#if swatches.length}
+							<div class="chip-row">
+								{#each swatches as sw, i (i)}
+									<button
+										type="button"
+										class="swatch-toggle"
+										aria-pressed={swatchSelected(knob.key, i)}
+										style:background={sw}
+										aria-label="Toggle {sw}"
+										onclick={() => toggleSwatch(knob.key, i, swatches.length)}
+									></button>
+								{/each}
+							</div>
+						{:else}
+							<p class="hint">Pick a colour theme to choose which colours appear.</p>
+						{/if}
+					{:else if knob.kind === 'multiselect'}
+						<div class="chip-row">
+							{#each knob.options as option (option.value)}
+								<button
+									type="button"
+									aria-pressed={(canvasKnobArray(knob.key) as string[]).includes(option.value)}
+									onclick={() => toggleOption(knob.key, option.value)}
+								>
+									{option.label}
+								</button>
+							{/each}
+						</div>
+					{:else}
+						<div class="chip-row">
+							{#each knob.options as option (option.value)}
+								<button
+									type="button"
+									aria-pressed={canvasKnobValue(knob.key) === option.value}
+									onclick={() => setCanvasKnob(knob.key, option.value)}
+								>
+									{option.label}
+								</button>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			{/each}
 		{/if}
@@ -265,6 +331,21 @@
 	.field input[type='range'] {
 		width: 100%;
 		accent-color: hsl(var(--primary));
+	}
+	/* "Which colours participate" chips: a round swatch that dims when excluded. */
+	.swatch-toggle {
+		height: 1.5rem;
+		width: 1.5rem;
+		flex: 0 0 auto;
+		border-radius: 999px;
+		border: 1px solid hsl(var(--border));
+		opacity: 0.35;
+		cursor: pointer;
+	}
+	.swatch-toggle[aria-pressed='true'] {
+		opacity: 1;
+		outline: 2px solid hsl(var(--foreground));
+		outline-offset: 1px;
 	}
 	.hint {
 		margin: 0;

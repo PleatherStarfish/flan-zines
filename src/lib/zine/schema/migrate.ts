@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { getBlock } from '../registry';
+import { paletteById } from '../theme/registry';
 import { CURRENT_SCHEMA_VERSION, ZineDocumentSchema, type ZineDocument } from './document';
 import { SECTION_LAYOUTS, type SectionKind, type SectionLayout } from './theme';
 
@@ -79,6 +80,37 @@ function elementFromBlock(block: RawDocument, i: number, overrides: RawDocument 
 		...(animation ? { legacyAnimation: animation } : {}),
 		...overrides
 	};
+}
+
+// v3 theme `{ palette?, accent?, fontPair? }` (keys into the built-in palette registry) →
+// v4 `{ colors, swatches, fontPair? }` (data-model.md §7). The legacy keys are RESOLVED
+// through `paletteById` into the same colours they rendered, so appearance is preserved and
+// nothing is dropped (lossless): `colors` captures the role→colour mapping, `swatches` the
+// pool the editor offers. Resolves only via the built-in palettes — no culori on the parse
+// path. A document with no `theme` stays themeless (the renderer's defaults apply).
+function migrateThemeV3toV4(rawTheme: unknown): RawDocument | undefined {
+	if (!rawTheme || typeof rawTheme !== 'object') return undefined;
+	const theme = rawTheme as RawDocument;
+	const palette = paletteById(typeof theme.palette === 'string' ? theme.palette : undefined);
+	// Carry the legacy accent through FAITHFULLY (don't sanitize here) so `HexColorSchema`
+	// still rejects an unsafe author value downstream — migration stays fail-closed. Only an
+	// absent accent falls back to the palette default.
+	const accent = typeof theme.accent === 'string' ? theme.accent : palette.accents[0];
+	const colors = {
+		background: palette.bg,
+		text: palette.fg,
+		heading: palette.fg,
+		accent,
+		muted: palette.muted
+	};
+	// Source palette: chosen accent first, then the palette's other accents and its structural
+	// colours, de-duplicated — the swatch pool the editor surfaces for assignment.
+	const swatches = [
+		...new Set([accent, ...palette.accents, palette.bg, palette.fg, palette.muted])
+	];
+	const next: RawDocument = { colors, swatches };
+	if (typeof theme.fontPair === 'string') next.fontPair = theme.fontPair;
+	return next;
 }
 
 const migrations: Record<number, Migration> = {
@@ -183,6 +215,16 @@ const migrations: Record<number, Migration> = {
 			...rest,
 			schemaVersion: 3,
 			acts: [{ id: 'act_migrated', scenes }]
+		};
+	},
+	3: (doc) => {
+		const theme = migrateThemeV3toV4(doc.theme);
+		const { theme: _theme, ...rest } = doc;
+		void _theme;
+		return {
+			...rest,
+			schemaVersion: 4,
+			...(theme ? { theme } : {})
 		};
 	}
 };

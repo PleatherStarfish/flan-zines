@@ -16,7 +16,8 @@ import type {
 } from '$lib/zine/schema/document';
 import { parseDocument } from '$lib/zine/schema/migrate';
 import type { BlockStyle, SectionKind } from '$lib/zine/schema/theme';
-import type { Theme } from '$lib/zine/schema/theme';
+import type { Theme, ThemeColors, ThemeRole } from '$lib/zine/schema/theme';
+import { resolveThemeColors, themeSwatches } from '$lib/zine/theme/registry';
 import type { AnimationDescriptor, EffectRef } from '$lib/zine/schema/animation';
 import { newActId, newBeatId, newBlockId, newElementId, newSceneId } from './ids';
 import { DraftSaver, type SavePayload, type SaveResult, type SaveStatus } from './autosave';
@@ -59,7 +60,7 @@ type DraftShadow = Omit<z.infer<typeof DraftShadowSchema>, 'document'> & {
 };
 
 export class EditorStore {
-	doc = $state<ZineDocument>({ schemaVersion: 3, acts: [] });
+	doc = $state<ZineDocument>({ schemaVersion: 4, acts: [] });
 	selectedId = $state<string | null>(null);
 	mode = $state<'edit' | 'preview'>('edit');
 	saveStatus = $state<SaveStatus>('idle');
@@ -487,6 +488,56 @@ export class EditorStore {
 	setTheme(theme: Theme): void {
 		this.mutate((draft) => {
 			draft.theme = { ...draft.theme, ...theme };
+		});
+	}
+
+	/** Apply a curated catalogue theme: its swatch pool + role colours, recording its id. */
+	applyThemePreset(preset: { id: string; swatches: string[]; colors: ThemeColors }): void {
+		this.mutate((draft) => {
+			draft.theme = {
+				...draft.theme,
+				preset: preset.id,
+				swatches: [...preset.swatches],
+				colors: { ...preset.colors }
+			};
+		});
+	}
+
+	/** Bind one semantic role (background/text/heading/accent/muted) to a colour. */
+	setThemeRole(role: ThemeRole, color: string): void {
+		this.mutate((draft) => {
+			const colors: ThemeColors = { ...resolveThemeColors(draft.theme), [role]: color };
+			draft.theme = { ...draft.theme, colors };
+		});
+	}
+
+	/** Convenience: set the page background colour (the `background` role). */
+	setThemeBackgroundColor(color: string): void {
+		this.setThemeRole('background', color);
+	}
+
+	/** Edit a swatch in the theme's pool, re-pointing any role still bound to its old value. */
+	setThemeSwatch(index: number, color: string): void {
+		this.mutate((draft) => {
+			const swatches = [...themeSwatches(draft.theme)];
+			if (index < 0 || index >= swatches.length) return;
+			const previous = swatches[index];
+			swatches[index] = color;
+			const colors: ThemeColors = { ...resolveThemeColors(draft.theme) };
+			if (previous) {
+				for (const role of Object.keys(colors) as ThemeRole[]) {
+					if (colors[role] === previous) colors[role] = color;
+				}
+			}
+			draft.theme = { ...draft.theme, swatches, colors };
+		});
+	}
+
+	/** Append a custom swatch to the theme's pool (capped at the schema's 12). */
+	addThemeSwatch(color: string): void {
+		this.mutate((draft) => {
+			const swatches = [...themeSwatches(draft.theme), color].slice(0, 12);
+			draft.theme = { ...draft.theme, swatches };
 		});
 	}
 

@@ -55,6 +55,14 @@ export interface KnobMeta {
 	key: string;
 	/** Student-facing label, e.g. `Speed`. */
 	label: string;
+	/**
+	 * How the inspector renders the knob. `select` (default) = single-choice chips drawn from
+	 * `options`. `multiselect` = toggle several of `options` (the param holds an array).
+	 * `theme-swatches` = toggle over the LIVE document theme swatches — a theme-aware
+	 * background's "which colours participate" control; the param holds an array of swatch
+	 * indices and `options` is unused (the choices come from the theme, not from here).
+	 */
+	kind?: 'select' | 'multiselect' | 'theme-swatches';
 	options: { value: string; label: string }[];
 }
 

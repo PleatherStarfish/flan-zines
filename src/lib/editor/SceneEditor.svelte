@@ -30,7 +30,7 @@
 	const document = $derived<ZineDocument | null>(
 		scene
 			? {
-					schemaVersion: 3,
+					schemaVersion: 4,
 					theme: store.doc.theme,
 					acts: [{ id: 'act_scene_editor', scenes: [scene] }]
 				}

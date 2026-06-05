@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { allBackgrounds, backgroundIds, getBackground, registerBackground } from './registry';
 import type { BackgroundEngine, BackgroundReducedMotion } from './contract';
 
-const CATALOGUE = ['drift-field', 'fish-flock'];
-const ENGINES: BackgroundEngine[] = ['canvas2d', 'p5', 'three', 'd3'];
+const CATALOGUE = ['drift-field', 'fish-flock', 'organic-gradient'];
+const ENGINES: BackgroundEngine[] = ['canvas2d', 'webgl', 'p5', 'three', 'd3'];
 const FALLBACKS: BackgroundReducedMotion[] = ['static', 'still-frame', 'off'];
 
 describe('background registry integrity', () => {
@@ -22,8 +22,14 @@ describe('background registry integrity', () => {
 			expect(ENGINES, `${def.type} engine`).toContain(def.engine);
 			expect(FALLBACKS, `${def.type} reducedMotion`).toContain(def.reducedMotion);
 			expect(def.fps, `${def.type} fps`).toBeGreaterThan(0);
-			expect(def.knobs.length, `${def.type} knobs`).toBeLessThanOrEqual(3);
-			for (const knob of def.knobs) expect(knob.options.length).toBeGreaterThan(0);
+			// Backgrounds are a creative "wallpaper" surface, so they get a larger knob budget
+			// than element effects (which stay ≤3 for young students); still bounded.
+			expect(def.knobs.length, `${def.type} knobs`).toBeLessThanOrEqual(6);
+			for (const knob of def.knobs) {
+				// `theme-swatches` knobs draw their choices from the live theme, so their static
+				// `options` are intentionally empty; every other knob must offer choices.
+				if (knob.kind !== 'theme-swatches') expect(knob.options.length).toBeGreaterThan(0);
+			}
 			expect(def.label.trim().length).toBeGreaterThan(0);
 			expect(def.icon.trim().length).toBeGreaterThan(0);
 		}
