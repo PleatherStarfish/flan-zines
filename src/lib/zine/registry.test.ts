@@ -24,8 +24,17 @@ describe('block registry integrity', () => {
 		}
 	});
 
-	it('exposes a Render component for every block', () => {
-		for (const def of allBlocks()) expect(def.Render).toBeTruthy();
+	it('every block declares an editor label', () => {
+		for (const def of allBlocks()) {
+			expect(def.label.trim().length, `${def.type} missing label`).toBeGreaterThan(0);
+		}
+	});
+
+	it('exposes a Render and an Inspector component for every block', () => {
+		for (const def of allBlocks()) {
+			expect(def.Render, `${def.type} missing Render`).toBeTruthy();
+			expect(def.Inspector, `${def.type} missing Inspector`).toBeTruthy();
+		}
 	});
 
 	it('rejects duplicate registration of a type', () => {

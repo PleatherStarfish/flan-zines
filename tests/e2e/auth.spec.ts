@@ -22,6 +22,7 @@ test('login page offers Google and magic-link sign-in', async ({ page }) => {
 	await expect(page.getByRole('button', { name: /Continue with Google/ })).toBeVisible();
 	await expect(page.getByLabel('School email')).toBeVisible();
 	await expect(page.getByRole('button', { name: /magic link/i })).toBeVisible();
+	await expect(page.getByRole('button', { name: /Continue as Riverwild/i })).toHaveCount(0);
 });
 
 test('unauthenticated users are redirected away from /app', async ({ page }) => {

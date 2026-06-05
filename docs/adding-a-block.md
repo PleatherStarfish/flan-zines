@@ -13,11 +13,13 @@ Every block is a [`BlockDef<P>`](../src/lib/zine/schema/block.ts):
 ```ts
 interface BlockDef<P> {
 	type: string; // unique discriminator stored in the document
+	label: string; // human-facing editor palette / outline label
 	category: 'text' | 'media' | 'structure' | 'interactive';
 	schema: ZodType<P>; // validates props at save / publish / render
 	defaults: P; // must pass `schema` (registry test enforces it)
 	allowedAnimations: AnimationType[]; // presets this block may use (Step 4)
 	Render: Component<{ props: P }>; // the published component (also the editor preview)
+	Inspector: Component<{ value: P; onChange: (next: P) => void }>; // schema-validated by host
 	requiredForPublish?: (props: P) => string[]; // a11y/quality gate, e.g. ["Add alt text"]
 }
 ```
@@ -30,7 +32,7 @@ Two rules that keep blocks simple:
 - **Never `{@html}` author content.** Render structured data into elements (see the rich-text block for
   the recursive pattern). This is the safety boundary for a tool used by minors.
 
-## The recipe (4 files + 1 line)
+## The recipe (5 files + 1 line)
 
 Create `src/lib/zine/blocks/<type>/`:
 
@@ -67,18 +69,38 @@ styles to `ZineRenderer`'s `:global(...)` block.
 import type { BlockDef } from '../../schema/block';
 import { PullQuotePropsSchema, type PullQuoteProps } from './schema';
 import Render from './Render.svelte';
+import Inspector from './Inspector.svelte';
 
 export const pullQuoteBlock: BlockDef<PullQuoteProps> = {
 	type: 'pullQuote',
+	label: 'Pull quote',
 	category: 'text',
 	schema: PullQuotePropsSchema,
 	defaults: { text: 'A line worth pausing on.' },
 	allowedAnimations: ['fade-up'],
-	Render
+	Render,
+	Inspector
 };
 ```
 
-**4. `Render.stories.ts`** — a story per meaningful state (the block-development surface).
+**4. `Inspector.svelte`** — the editor controls. The host validates every `onChange` against `schema`
+before committing.
+
+```svelte
+<script lang="ts">
+	import type { PullQuoteProps } from './schema';
+	let { value, onChange }: { value: PullQuoteProps; onChange: (next: PullQuoteProps) => void } =
+		$props();
+</script>
+
+<label class="block">
+	<span>Quote text</span>
+	<textarea value={value.text} oninput={(e) => onChange({ ...value, text: e.currentTarget.value })}
+	></textarea>
+</label>
+```
+
+**5. `Render.stories.ts`** — a story per meaningful state (the block-development surface).
 
 ```ts
 import type { Meta, StoryObj } from '@storybook/svelte';
@@ -103,7 +125,7 @@ renders it — no core edits.
 ## Tests to add
 
 - The shared [registry test](../src/lib/zine/registry.test.ts) already covers your block's
-  `defaults`-pass-`schema` and category once it's registered.
+  `defaults`-pass-`schema`, non-empty `label`, and category once it's registered.
 - Add a render + axe assertion in [blocks.test.ts](../src/lib/zine/blocks/blocks.test.ts) if the block
   has notable semantics (the registry-default axe sweep already includes it).
 - If `requiredForPublish` is set, assert it in a `publishBlockers` test.
@@ -111,7 +133,7 @@ renders it — no core edits.
 ## Checklist
 
 - [ ] New folder under `blocks/`; **no edits** to `ZineRenderer` / `document.ts` / other core.
-- [ ] `defaults` pass `schema`; URLs use `SafeUrlSchema`; no `{@html}` of author content.
+- [ ] `label` is human-facing; `defaults` pass `schema`; URLs use `SafeUrlSchema`; no `{@html}` of author content.
 - [ ] Semantic, keyboard-accessible markup; `requiredForPublish` set for any a11y gate (e.g. alt text).
 - [ ] Storybook story + tests; `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm build-storybook` green.
 

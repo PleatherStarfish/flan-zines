@@ -13,6 +13,10 @@ simple Wix-like tools; finished zines are published to a public gallery.
 > [docs/best-practices/](docs/best-practices/README.md). Read the relevant one before building a feature
 > it covers — they turn §5's animation system and the editor into specific, citable rules.
 
+> **Detailed design contract:** the [docs/design/](docs/design/README.md) set is the authoritative,
+> technical design of the data model, editor, pedagogy, and roadmap. Where it and this file disagree on
+> a specific (notably the **v2 data model** vs §4 below), **docs/design/ wins** and says so.
+
 ---
 
 ## 1. Goals & Constraints

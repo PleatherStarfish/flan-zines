@@ -8,17 +8,73 @@ const wrap = (block: unknown) => ({
 });
 
 describe('document schema', () => {
-	it('parses the sample fixture into a typed document', () => {
+	it('parses the sample fixture as the current v3 story model', () => {
 		const doc = parseDocument(sampleZineRaw);
-		expect(doc.schemaVersion).toBe(1);
-		expect(doc.sections.length).toBe(2);
-		// section.layout defaulted by the schema
-		expect(doc.sections[0].layout).toBe('centered');
+		expect(doc.schemaVersion).toBe(3);
+		expect(doc.acts).toHaveLength(1);
+		expect(doc.acts[0].scenes).toHaveLength(2);
+		expect(doc.acts[0].scenes[0].type).toBe('page');
+		expect(doc.acts[0].scenes[0].presentation?.legacyLayout).toBe('centered');
 	});
 
 	it('returns registry-parsed block props, including defaults', () => {
 		const doc = parseDocument(wrap({ id: 'b', type: 'heading', props: { text: 'Default me' } }));
-		expect(doc.sections[0].blocks[0].props).toEqual({ text: 'Default me', level: 2 });
+		expect(doc.acts[0].scenes[0].elements[0].block.props).toEqual({
+			text: 'Default me',
+			level: 2
+		});
+	});
+
+	it('rejects a page scene without exactly one beat at 0', () => {
+		const result = safeParseDocument({
+			schemaVersion: 3,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'page',
+							length: 'auto',
+							beats: [{ id: 'beat', at: 0.5 }],
+							elements: []
+						}
+					]
+				}
+			]
+		});
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.message).toMatch(/one beat at 0/i);
+	});
+
+	it('rejects an element anchorBeat outside its scene', () => {
+		const result = safeParseDocument({
+			schemaVersion: 3,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'feature',
+							length: 'auto',
+							beats: [{ id: 'beat', at: 0 }],
+							elements: [
+								{
+									id: 'el',
+									track: 'content',
+									block: { id: 'b', type: 'heading', props: { text: 'x' } },
+									range: { start: 0, end: 1 },
+									anchorBeat: 'missing'
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.message).toMatch(/anchorBeat/i);
 	});
 
 	it('rejects an unknown block type with a clear, pointed error', () => {

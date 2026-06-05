@@ -7,12 +7,16 @@ Wix-like tools; finished zines are published to a public gallery.
 - **Design:** [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Build sequence + per-step review gates:** [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 - **Acceptance rubric (for Codex review):** [REQUIREMENTS.md](REQUIREMENTS.md)
+- **Detailed design contract (data model, editor, pedagogy, roadmap):** [docs/design/](docs/design/README.md)
 - **Implementation best practices (for AI):** [docs/best-practices/](docs/best-practices/README.md)
 
-> **Status: Step 2 — Document schema, block registry & read-only renderer.** A zine is validated JSON
-> (sections → blocks); the registry-driven `ZineRenderer` turns it into a semantic, accessible page,
-> rendered server-side at `/z/[user]/[slug]`. See [Content model & rendering](#content-model--rendering-step-2)
-> and [scope notes](#scope-notes). (Step 1: accounts + RLS — [Accounts, auth & RLS](#accounts-auth--rls-step-1).)
+> **Status: Step 3 — The editor.** A student creates a zine from a template, edits blocks via a
+> registry-driven inspector on a decorated `ZineRenderer` canvas (author ≡ published), with labelled
+> undo/redo and **defense-in-depth autosave** (revision discipline, 409 conflict handling, offline
+> retry, localStorage shadow). The document model is **v2** (`kind`/`role`/`presentation`, lossless
+> `1→2` migration). See [The editor](#the-editor-step-3) and [scope notes](#scope-notes). (Step 2:
+> [Content model & rendering](#content-model--rendering-step-2); Step 1:
+> [Accounts, auth & RLS](#accounts-auth--rls-step-1).)
 
 ---
 
@@ -69,7 +73,9 @@ supabase db reset          # re-apply migrations + seed.sql
 
 `supabase start` prints the local `anon` and `service_role` keys — copy them into `.env`. Seeded dev
 logins: any seeded email (e.g. `river@lakeside.test`) + `password123`, or a magic link (captured by
-Inbucket at http://127.0.0.1:54324).
+Inbucket at http://127.0.0.1:54324). While running `pnpm dev`, `/login` also shows a temporary
+**Continue as Riverwild** shortcut; the server action is guarded by SvelteKit `dev` and is absent from
+production preview/builds.
 
 ### Running the RLS tests without Docker
 
@@ -158,9 +164,50 @@ tests/
 - **Extensibility:** new blocks/animations register in `src/lib/zine/registry.ts` — no edits to the
   core renderer/editor. (Contracts in [IMPLEMENTATION_PLAN.md §2](IMPLEMENTATION_PLAN.md).)
 
+## The editor (Step 3)
+
+The Wix-like authoring tool lives in [`src/lib/editor`](src/lib/editor) and mounts at
+`/app/zines/[id]/edit` (client-only; the server load fetches the RLS-scoped draft).
+
+- **Create:** “New zine” on `/app` seeds a draft from a template (Blank / Photo essay / Data story /
+  Interview) and opens the editor.
+- **Author ≡ published:** the canvas is the real `ZineRenderer` decorated via an optional Svelte
+  context ([`render/context.ts`](src/lib/zine/render/context.ts)) — blocks become selectable in Edit
+  mode and inert on the public page. Edit / Preview toggle + device frames.
+- **Registry-driven inspector:** selecting a block renders its `BlockDef.Inspector`; every edit is
+  `schema.safeParse`-validated **before** it touches the document — invalid input shows an error and
+  never corrupts the draft.
+- **Undo/redo** via Immer patches with labelled intents; **autosave** ([`editor/autosave.ts`](src/lib/editor/autosave.ts))
+  is the data-loss defense — revision discipline (a stale ack can’t mark a newer rev saved), 409
+  conflict pause, offline retry with backoff, and a localStorage shadow.
+- **Theme:** curated palettes + accents + font pairs ([`zine/theme/registry.ts`](src/lib/zine/theme/registry.ts)),
+  applied as CSS variables by the renderer.
+
+**See it:** the editor needs auth + the database. Browse the UI without a backend via Storybook
+(`pnpm storybook` → _Editor / EditorShell_), or run the full stack (`supabase start`, sign in, create
+a zine). The store, autosave protocol, migration, and inspector-validation are covered by unit +
+component tests (`src/lib/editor/**`, `src/lib/zine/schema/**`); the live select → edit → autosave loop
+is verified in Storybook.
+
 ## Scope notes
 
 Deliberate, documented deviations so review is judged against intent, not guesswork:
+
+**Step 3**
+
+- **Rich text is an interim plain-text editor; TipTap (bold/italic/links + paste sanitation) is the
+  next increment.** The contract is unchanged — the inspector edits `props.doc`, host-validated against
+  the richtext schema — so swapping in TipTap touches only the richText inspector.
+- **Fonts ship as curated system stacks; self-hosting the exact Google families via `@fontsource` is an
+  additive fast-follow** (only the stack strings change). Palettes + accents are fully wired.
+- **Canvas selection, not canvas drag-reorder.** Reorder is via the Outline (move up/down + tree); the
+  contract calls drag the enhancement and buttons the accessible primitive.
+- **Scrolly authoring is deferred to Step 4** (it’s listed but disabled). The v2 schema reserves
+  `role`/`state`; the structural guard (role/state only in a scrolly section) is enforced now, the
+  graphic/step cardinality + `stateSchema` validation land with the animation system.
+- **The full DB-backed author→reload e2e runs against `supabase start`** (Docker wasn’t available here).
+  The loop is proven by the store round-trip + autosave protocol + inspector-validation unit/component
+  tests and the Storybook visual; the failed-migrate recovery screen (editor.md §7.7) is a follow-up.
 
 **Step 2**
 

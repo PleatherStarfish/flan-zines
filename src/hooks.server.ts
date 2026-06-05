@@ -3,10 +3,14 @@
 // not configured (fresh clone / CI build with no env) everything degrades to
 // "logged out" so public pages still render and `/app` simply redirects to login.
 import { createServerClient } from '@supabase/ssr';
+import type { RealtimeClientOptions } from '@supabase/supabase-js';
 import { type Handle, redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
+import WebSocket from 'ws';
 import { isSupabaseConfigured, supabaseAnonKey, supabaseUrl } from '$lib/supabase/config';
 import type { Database } from '$lib/supabase/types';
+
+const websocketTransport = WebSocket as unknown as NonNullable<RealtimeClientOptions['transport']>;
 
 const supabase: Handle = async ({ event, resolve }) => {
 	if (!isSupabaseConfigured) {
@@ -16,6 +20,9 @@ const supabase: Handle = async ({ event, resolve }) => {
 	}
 
 	event.locals.supabase = createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
+		realtime: {
+			transport: websocketTransport
+		},
 		cookies: {
 			getAll: () => event.cookies.getAll(),
 			setAll: (cookiesToSet) => {

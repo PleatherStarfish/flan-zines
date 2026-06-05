@@ -57,6 +57,12 @@ export interface Database {
 				};
 				Relationships: [];
 			};
+			zine_drafts: {
+				Row: { zine_id: string; document: Json; updated_at: string };
+				Insert: { zine_id: string; document: Json; updated_at?: string };
+				Update: { document?: Json; updated_at?: string };
+				Relationships: [];
+			};
 		};
 		Views: Record<string, never>;
 		Functions: Record<string, never>;

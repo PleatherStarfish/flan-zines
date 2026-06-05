@@ -1,0 +1,494 @@
+import { applyPatches, enablePatches, produceWithPatches, type Patch } from 'immer';
+import { z } from 'zod';
+import { getBlock } from '$lib/zine/registry';
+import type {
+	Act,
+	Block,
+	Beat,
+	Element,
+	Scene,
+	SceneLength,
+	SceneType,
+	ZineDocument
+} from '$lib/zine/schema/document';
+import { parseDocument } from '$lib/zine/schema/migrate';
+import type { BlockStyle, SectionKind } from '$lib/zine/schema/theme';
+import type { Theme } from '$lib/zine/schema/theme';
+import { newActId, newBeatId, newBlockId, newElementId, newSceneId } from './ids';
+import { DraftSaver, type SavePayload, type SaveResult, type SaveStatus } from './autosave';
+
+enablePatches();
+
+type HistoryEntry = { patches: Patch[]; inverse: Patch[] };
+
+export interface EditorStoreOptions {
+	document: ZineDocument;
+	zineId: string;
+	baseUpdatedAt: string | null;
+	/** Injected for tests; defaults to the PUT /draft endpoint in the browser. */
+	save?: (payload: SavePayload) => Promise<SaveResult>;
+}
+
+const SHADOW_PREFIX = 'zine-draft-shadow:';
+const DraftShadowSchema = z.object({
+	document: z.unknown(),
+	localRev: z.number().int().nonnegative(),
+	baseUpdatedAt: z.string().nullable(),
+	writtenAt: z.string()
+});
+type DraftShadow = Omit<z.infer<typeof DraftShadowSchema>, 'document'> & {
+	document: ZineDocument;
+};
+
+export class EditorStore {
+	doc = $state<ZineDocument>({ schemaVersion: 3, acts: [] });
+	selectedId = $state<string | null>(null);
+	mode = $state<'edit' | 'preview'>('edit');
+	device = $state<'desktop' | 'tablet' | 'mobile'>('desktop');
+	saveStatus = $state<SaveStatus>('idle');
+	canUndo = $state(false);
+	canRedo = $state(false);
+	shadowRestored = $state(false);
+	shadowWrittenAt = $state<string | null>(null);
+
+	readonly zineId: string;
+	readonly saver: DraftSaver;
+	private undoStack: HistoryEntry[] = [];
+	private redoStack: HistoryEntry[] = [];
+
+	constructor(opts: EditorStoreOptions) {
+		const shadow = readShadow(opts.zineId);
+		this.doc = shadow?.document ?? opts.document;
+		this.zineId = opts.zineId;
+		this.shadowRestored = Boolean(shadow);
+		this.shadowWrittenAt = shadow?.writtenAt ?? null;
+		this.saver = new DraftSaver({
+			save: opts.save ?? createEndpointSave(opts.zineId),
+			getSnapshot: () => $state.snapshot(this.doc),
+			baseUpdatedAt: shadow?.baseUpdatedAt ?? opts.baseUpdatedAt,
+			onStatus: (status) => {
+				this.saveStatus = status;
+			},
+			onAck: (rev) => {
+				if (rev >= this.saver.localRev) this.clearShadow();
+			}
+		});
+		if (shadow) this.saver.markDirty(shadow.localRev);
+	}
+
+	// ── core mutation engine ──────────────────────────────────────────────────
+	private mutate(recipe: (draft: ZineDocument) => void): void {
+		const base = $state.snapshot(this.doc) as ZineDocument;
+		const [next, patches, inverse] = produceWithPatches(base, recipe);
+		this.doc = next as ZineDocument;
+		this.undoStack.push({ patches, inverse });
+		this.redoStack = [];
+		this.afterChange();
+	}
+
+	private afterChange(): void {
+		this.canUndo = this.undoStack.length > 0;
+		this.canRedo = this.redoStack.length > 0;
+		const nextRev = this.saver.localRev + 1;
+		this.writeShadow(nextRev);
+		this.saver.markDirty(nextRev);
+	}
+
+	undo(): void {
+		const entry = this.undoStack.pop();
+		if (!entry) return;
+		this.doc = applyPatches(
+			$state.snapshot(this.doc) as ZineDocument,
+			entry.inverse
+		) as ZineDocument;
+		this.redoStack.push(entry);
+		this.afterChange();
+	}
+
+	redo(): void {
+		const entry = this.redoStack.pop();
+		if (!entry) return;
+		this.doc = applyPatches(
+			$state.snapshot(this.doc) as ZineDocument,
+			entry.patches
+		) as ZineDocument;
+		this.undoStack.push(entry);
+		this.afterChange();
+	}
+
+	// ── selection / view ──────────────────────────────────────────────────────
+	select(id: string | null): void {
+		this.selectedId = id;
+	}
+	setMode(mode: 'edit' | 'preview'): void {
+		this.mode = mode;
+	}
+	setDevice(device: 'desktop' | 'tablet' | 'mobile'): void {
+		this.device = device;
+	}
+
+	// ── lookups ───────────────────────────────────────────────────────────────
+	get selectedElement(): { actId: string; sceneId: string; element: Element } | null {
+		for (const act of this.doc.acts) {
+			for (const scene of act.scenes) {
+				const element = scene.elements.find((candidate) => candidate.id === this.selectedId);
+				if (element) return { actId: act.id, sceneId: scene.id, element };
+			}
+		}
+		return null;
+	}
+	get selectedBlock(): { actId: string; sceneId: string; element: Element; block: Block } | null {
+		const selected = this.selectedElement;
+		return selected ? { ...selected, block: selected.element.block } : null;
+	}
+	get selectedScene(): Scene | null {
+		for (const act of this.doc.acts) {
+			const scene = act.scenes.find((candidate) => candidate.id === this.selectedId);
+			if (scene) return scene;
+		}
+		return null;
+	}
+	get selectedSection(): Scene | null {
+		return this.selectedScene;
+	}
+
+	// ── act intents ───────────────────────────────────────────────────────────
+	addAct(title?: string): string {
+		const id = newActId();
+		this.mutate((draft) => {
+			draft.acts.push({ id, title: title || undefined, scenes: [] });
+		});
+		this.selectedId = id;
+		return id;
+	}
+	setActTitle(actId: string, title: string): void {
+		this.mutate((draft) => {
+			const act = draft.acts.find((candidate) => candidate.id === actId);
+			if (act) act.title = title || undefined;
+		});
+	}
+	moveAct(actId: string, dir: 'up' | 'down'): void {
+		this.mutate((draft) => move(draft.acts, (act) => act.id === actId, dir));
+	}
+	removeAct(actId: string): void {
+		this.mutate((draft) => {
+			draft.acts = draft.acts.filter((act) => act.id !== actId);
+		});
+		if (this.selectedId === actId) this.selectedId = null;
+	}
+
+	// ── scene intents ─────────────────────────────────────────────────────────
+	addScene(actId = this.doc.acts.at(-1)?.id ?? this.addAct(), type: SceneType = 'page'): string {
+		const id = newSceneId();
+		this.mutate((draft) => {
+			const act = draft.acts.find((candidate) => candidate.id === actId);
+			if (!act) return;
+			act.scenes.push({
+				id,
+				type,
+				length: type === 'reveal' || type === 'parallax' || type === 'sidescroll' ? 'long' : 'auto',
+				beats: [{ id: newBeatId(), at: 0 }],
+				elements: []
+			});
+		});
+		this.selectedId = id;
+		return id;
+	}
+	setSceneType(sceneId: string, type: SceneType): void {
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (!scene) return;
+			scene.type = type;
+			if (type === 'page') {
+				const firstBeat = scene.beats[0] ?? { id: newBeatId(), at: 0 };
+				scene.beats = [{ ...firstBeat, at: 0, state: undefined }];
+			}
+		});
+	}
+	setSceneLabel(sceneId: string, label: string): void {
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (scene) scene.label = label || undefined;
+		});
+	}
+	setSceneLength(sceneId: string, length: SceneLength): void {
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (scene) scene.length = length;
+		});
+	}
+	moveScene(sceneId: string, dir: 'up' | 'down'): void {
+		this.mutate((draft) => {
+			const found = findScene(draft, sceneId);
+			if (found) move(found.act.scenes, (scene) => scene.id === sceneId, dir);
+		});
+	}
+	removeScene(sceneId: string): void {
+		this.mutate((draft) => {
+			for (const act of draft.acts) {
+				act.scenes = act.scenes.filter((scene) => scene.id !== sceneId);
+			}
+		});
+		if (this.selectedId === sceneId) this.selectedId = null;
+	}
+
+	// Compatibility wrappers until the Story Map replaces the Step-3 rail.
+	addSection(kind: SectionKind = 'prose'): string {
+		return this.addScene(this.doc.acts.at(-1)?.id, sectionKindToSceneType(kind));
+	}
+	setSectionKind(sceneId: string, kind: SectionKind): void {
+		this.setSceneType(sceneId, sectionKindToSceneType(kind));
+	}
+	setSectionLabel(sceneId: string, label: string): void {
+		this.setSceneLabel(sceneId, label);
+	}
+	moveSection(sceneId: string, dir: 'up' | 'down'): void {
+		this.moveScene(sceneId, dir);
+	}
+	removeSection(sceneId: string): void {
+		this.removeScene(sceneId);
+	}
+
+	// ── element intents ───────────────────────────────────────────────────────
+	addElement(sceneId: string, type: string, afterElementId?: string): string | null {
+		const def = getBlock(type);
+		if (!def) return null;
+		const id = newElementId();
+		const newElement: Element = {
+			id,
+			track: def.category === 'media' ? 'media' : 'content',
+			block: { id: newBlockId(), type, props: structuredClone(def.defaults) } as Block,
+			range: { start: 0, end: 1 }
+		};
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (!scene) return;
+			const at = afterElementId
+				? scene.elements.findIndex((element) => element.id === afterElementId) + 1
+				: scene.elements.length;
+			scene.elements.splice(at, 0, newElement);
+		});
+		this.selectedId = id;
+		return id;
+	}
+	updateElementBlockProps(elementId: string, props: unknown): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (element) element.block.props = props;
+		});
+	}
+	updateElementStyle(elementId: string, style: BlockStyle): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (element) element.block.style = style;
+		});
+	}
+	updateElementRange(elementId: string, range: Element['range']): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (element) element.range = range;
+		});
+	}
+	moveElement(elementId: string, dir: 'up' | 'down'): void {
+		this.mutate((draft) => {
+			const found = findElement(draft, elementId);
+			if (found) move(found.scene.elements, (element) => element.id === elementId, dir);
+		});
+	}
+	removeElement(elementId: string): void {
+		this.mutate((draft) => {
+			for (const act of draft.acts) {
+				for (const scene of act.scenes) {
+					scene.elements = scene.elements.filter((element) => element.id !== elementId);
+				}
+			}
+		});
+		if (this.selectedId === elementId) this.selectedId = null;
+	}
+
+	addBeat(sceneId: string, at = 0): string {
+		const id = newBeatId();
+		let existingPageBeatId: string | null = null;
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (!scene) return;
+			if (scene.type === 'page') {
+				const firstBeat = scene.beats[0] ?? { id: newBeatId(), at: 0 };
+				scene.beats = [{ ...firstBeat, at: 0, state: undefined }];
+				existingPageBeatId = firstBeat.id;
+				return;
+			}
+			scene.beats.push({ id, at });
+			scene.beats.sort((a, b) => a.at - b.at);
+		});
+		return existingPageBeatId ?? id;
+	}
+	updateBeat(sceneId: string, beatId: string, next: Partial<Beat>): void {
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			const beat = scene?.beats.find((candidate) => candidate.id === beatId);
+			if (!scene || !beat) return;
+			if (scene.type === 'page') {
+				beat.label = next.label ?? beat.label;
+				beat.at = 0;
+				beat.state = undefined;
+				scene.beats = [beat];
+				return;
+			}
+			Object.assign(beat, next);
+			scene.beats.sort((a, b) => a.at - b.at);
+		});
+	}
+	removeBeat(sceneId: string, beatId: string): void {
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (!scene || scene.beats.length <= 1) return;
+			scene.beats = scene.beats.filter((beat) => beat.id !== beatId);
+			for (const element of scene.elements) {
+				if (element.anchorBeat === beatId) element.anchorBeat = undefined;
+			}
+		});
+	}
+
+	// Compatibility wrappers until component names are replaced in Increment 2.
+	addBlock(sceneId: string, type: string, afterElementId?: string): string | null {
+		return this.addElement(sceneId, type, afterElementId);
+	}
+	updateBlockProps(elementId: string, props: unknown): void {
+		this.updateElementBlockProps(elementId, props);
+	}
+	updateBlockStyle(elementId: string, style: BlockStyle): void {
+		this.updateElementStyle(elementId, style);
+	}
+	moveBlock(elementId: string, dir: 'up' | 'down'): void {
+		this.moveElement(elementId, dir);
+	}
+	removeBlock(elementId: string): void {
+		this.removeElement(elementId);
+	}
+
+	// ── theme ─────────────────────────────────────────────────────────────────
+	setTheme(theme: Theme): void {
+		this.mutate((draft) => {
+			draft.theme = { ...draft.theme, ...theme };
+		});
+	}
+
+	// ── persistence helpers ───────────────────────────────────────────────────
+	private writeShadow(localRev = this.saver.localRev): void {
+		if (typeof localStorage === 'undefined') return;
+		const writtenAt = new Date().toISOString();
+		try {
+			localStorage.setItem(
+				SHADOW_PREFIX + this.zineId,
+				JSON.stringify({
+					document: $state.snapshot(this.doc),
+					localRev,
+					baseUpdatedAt: this.saver.baseUpdatedAt,
+					writtenAt
+				})
+			);
+			this.shadowWrittenAt = writtenAt;
+		} catch {
+			// localStorage full / disabled — the server save is still the primary path.
+		}
+	}
+	private clearShadow(): void {
+		if (typeof localStorage === 'undefined') return;
+		try {
+			localStorage.removeItem(SHADOW_PREFIX + this.zineId);
+			this.shadowRestored = false;
+			this.shadowWrittenAt = null;
+		} catch {
+			// A stuck shadow is safer than deleting unsaved work by mistake.
+		}
+	}
+	keepLocalAfterConflict(): void {
+		this.saver.resolveKeepLocal();
+		this.writeShadow(this.saver.localRev);
+	}
+	discardLocalShadow(): void {
+		this.clearShadow();
+	}
+	get conflictServerUpdatedAt(): string | null {
+		return this.saver.conflictServerUpdatedAt;
+	}
+	flushNow(): Promise<void> {
+		return this.saver.flushNow();
+	}
+	dispose(): void {
+		this.saver.dispose();
+	}
+}
+
+// ── module helpers ──────────────────────────────────────────────────────────
+function findScene(draft: ZineDocument, sceneId: string): { act: Act; scene: Scene } | undefined {
+	for (const act of draft.acts) {
+		const scene = act.scenes.find((candidate) => candidate.id === sceneId);
+		if (scene) return { act, scene };
+	}
+	return undefined;
+}
+
+function findElement(
+	draft: ZineDocument,
+	elementId: string
+): { act: Act; scene: Scene; element: Element } | undefined {
+	for (const act of draft.acts) {
+		for (const scene of act.scenes) {
+			const element = scene.elements.find((candidate) => candidate.id === elementId);
+			if (element) return { act, scene, element };
+		}
+	}
+	return undefined;
+}
+
+function sectionKindToSceneType(kind: SectionKind): SceneType {
+	if (kind === 'feature' || kind === 'split') return 'feature';
+	if (kind === 'scrolly') return 'reveal';
+	return 'page';
+}
+
+function move<T>(arr: T[], match: (item: T) => boolean, dir: 'up' | 'down'): void {
+	const i = arr.findIndex(match);
+	if (i < 0) return;
+	const j = dir === 'up' ? i - 1 : i + 1;
+	if (j < 0 || j >= arr.length) return;
+	[arr[i], arr[j]] = [arr[j], arr[i]];
+}
+
+function readShadow(zineId: string): DraftShadow | null {
+	if (typeof localStorage === 'undefined') return null;
+	const raw = localStorage.getItem(SHADOW_PREFIX + zineId);
+	if (!raw) return null;
+	try {
+		const result = DraftShadowSchema.safeParse(JSON.parse(raw));
+		if (!result.success) return null;
+		return {
+			...result.data,
+			document: parseDocument(result.data.document)
+		};
+	} catch {
+		// Preserve the raw shadow for manual recovery; do not load invalid data into the editor.
+		return null;
+	}
+}
+
+function createEndpointSave(zineId: string) {
+	return async (payload: SavePayload): Promise<SaveResult> => {
+		const res = await fetch(`/app/zines/${zineId}/draft`, {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(payload)
+		});
+		if (res.status === 409) {
+			const body = (await res.json()) as { serverUpdatedAt: string };
+			return { ok: false, conflict: true, serverUpdatedAt: body.serverUpdatedAt };
+		}
+		if (!res.ok) {
+			return { ok: false, conflict: false, error: `Save failed (${res.status})` };
+		}
+		const body = (await res.json()) as { clientRev: number; updatedAt: string };
+		return { ok: true, clientRev: body.clientRev, updatedAt: body.updatedAt };
+	};
+}

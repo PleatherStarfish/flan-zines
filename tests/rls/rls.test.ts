@@ -3,6 +3,7 @@
 // can and cannot see/do. Skips automatically when no test database is configured.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parseDocument } from '../../src/lib/zine/schema/migrate';
 import { asActor, countAs, createPool, hasDb, IDS, resetDatabase } from '../db/harness';
 
 const describeDb = hasDb ? describe : describe.skip;
@@ -21,8 +22,20 @@ describeDb('RLS — ownership is enforced at the database', () => {
 
 	const auth = (sub: string) => ({ sub, role: 'authenticated' as const });
 	const anon = { role: 'anon' as const };
+	const service = { role: 'service_role' as const };
 
 	describe('zine_drafts — the private working document', () => {
+		it('seeds editor-parseable draft documents', async () => {
+			const rows = await asActor(pool, service, (q) =>
+				q<{ document: unknown }>('select document from zine_drafts order by zine_id')
+			);
+
+			expect(rows.rows).toHaveLength(3);
+			expect(rows.rows.map(({ document }) => parseDocument(document).schemaVersion)).toEqual([
+				3, 3, 3
+			]);
+		});
+
 		it('denies a peer reading another student’s draft (both directions)', async () => {
 			expect(
 				await countAs(pool, auth(IDS.inkwell), 'select 1 from zine_drafts where zine_id=$1', [
@@ -155,6 +168,15 @@ describeDb('RLS — ownership is enforced at the database', () => {
 	});
 
 	describe('zine_versions — immutable snapshots', () => {
+		it('seeds editor-parseable published snapshots', async () => {
+			const rows = await asActor(pool, service, (q) =>
+				q<{ document: unknown }>('select document from zine_versions order by id')
+			);
+
+			expect(rows.rows).toHaveLength(1);
+			expect(parseDocument(rows.rows[0].document).schemaVersion).toBe(3);
+		});
+
 		it('cannot be mutated (no UPDATE policy exists)', async () => {
 			const res = await asActor(pool, auth(IDS.river), (q) =>
 				q('update zine_versions set label=$2 where id=$1', [IDS.versionRiver, 'tampered'])

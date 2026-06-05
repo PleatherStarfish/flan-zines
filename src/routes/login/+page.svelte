@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dev } from '$app/environment';
 	import { enhance } from '$app/forms';
 	import { page } from '$app/stores';
 	import { getBrowserClient } from '$lib/supabase/browser';
@@ -8,6 +9,9 @@
 	let { form }: { form: ActionData } = $props();
 
 	const errorParam = $derived($page.url.searchParams.get('error'));
+	const message = $derived(form && 'message' in form ? form.message : null);
+	const devLoginMessage = $derived(form && 'email' in form ? null : message);
+	const magicLinkMessage = $derived(form && 'email' in form ? message : null);
 	let oauthPending = $state(false);
 
 	async function signInWithGoogle() {
@@ -57,6 +61,25 @@
 		{oauthPending ? 'Redirecting to Google…' : 'Continue with Google'}
 	</button>
 
+	{#if dev}
+		<form method="POST" action="?/devlogin" class="mt-3">
+			<button
+				type="submit"
+				class="w-full rounded-md border border-dashed border-amber-500 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+			>
+				Continue as Riverwild
+			</button>
+			{#if devLoginMessage}
+				<p role="alert" class="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-800">
+					{devLoginMessage}
+				</p>
+			{/if}
+			<p class="mt-2 text-xs text-muted-foreground">
+				Local development only. Uses <code>river@lakeside.test</code>.
+			</p>
+		</form>
+	{/if}
+
 	<div class="my-6 flex items-center gap-3 text-xs text-muted-foreground">
 		<span class="h-px flex-1 bg-border"></span>
 		or
@@ -68,7 +91,6 @@
 			Check <strong>{form.email}</strong> for a sign-in link.
 		</p>
 	{:else}
-		{@const message = form && 'message' in form ? form.message : null}
 		<form method="POST" action="?/magiclink" use:enhance class="space-y-3">
 			<div>
 				<label for="email" class="block text-sm font-medium text-foreground">School email</label>
@@ -79,13 +101,13 @@
 					autocomplete="email"
 					required
 					value={form?.email ?? ''}
-					aria-describedby={message ? 'email-error' : undefined}
+					aria-describedby={magicLinkMessage ? 'email-error' : undefined}
 					class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
 				/>
 			</div>
 
-			{#if message}
-				<p id="email-error" role="alert" class="text-sm text-red-700">{message}</p>
+			{#if magicLinkMessage}
+				<p id="email-error" role="alert" class="text-sm text-red-700">{magicLinkMessage}</p>
 			{/if}
 
 			<button
