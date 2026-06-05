@@ -21,10 +21,20 @@ interface AnimationDef<P> {
 	schema: ZodType<P>; // validates EffectRef.params (≤3 knobs)
 	defaults: P; // must pass `schema` (registry test enforces it)
 	knobs: KnobMeta[]; // the ≤3 inspector chips (Speed / Direction / Amount)
+	editor?: 'path'; // OPTIONAL: a deep authoring surface used INSTEAD of knob chips
 	reducedMotion: 'static' | 'passthrough'; // MANDATORY fallback
 	load: () => Promise<EffectImpl<P>>; // lazy → impl stays out of the base bundle
 }
 ```
+
+**The deep-`editor` exception.** Almost every effect is ≤3 picture-chips. The one sanctioned exception is
+an effect whose params are too rich for chips — the **`path` (Choreograph)** motion, whose `params` are an
+ordered list of control points ([`animations/path.ts`](../src/lib/zine/animations/path.ts)). It declares
+`editor: 'path'` and `knobs: []`; the [`EffectPicker`](../src/lib/editor/EffectPicker.svelte) then shows an
+"Edit the path" button that opens the visual stage ([`PathEditor.svelte`](../src/lib/editor/PathEditor.svelte))
+instead of chips. It pairs with a `placement: 'free'` element (a sprite that floats over the scene). The
+render path is still a pure `phase → transform` (transform-only): `samplePath()` interpolates the control
+points and `pathTransform()` emits a `translate(…cqw/cqh…)` — so it obeys every rule above.
 
 Three rules that keep effects safe, fast, and accessible:
 

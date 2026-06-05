@@ -9,7 +9,17 @@ export const imageBlock: BlockDef<ImageProps> = {
 	category: 'media',
 	schema: ImagePropsSchema,
 	defaults: { src: '/zine-sample.svg', alt: '' },
-	allowedAnimations: ['fade', 'rise', 'slide', 'pop', 'fly-in', 'parallax', 'float', 'ken-burns'],
+	allowedAnimations: [
+		'fade',
+		'rise',
+		'slide',
+		'pop',
+		'fly-in',
+		'parallax',
+		'float',
+		'ken-burns',
+		'path'
+	],
 	Render,
 	Inspector,
 	requiredForPublish: (props) =>

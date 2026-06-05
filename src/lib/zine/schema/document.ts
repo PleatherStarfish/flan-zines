@@ -11,7 +11,9 @@ import { SafeUrlSchema } from './url';
 // The block registry remains the single source of truth for content props.
 // v4 expands the theme to a role→colour model (schema/theme.ts §7); the change is additive
 // (all new theme fields optional) plus a lossless 3→4 migration (schema/migrate.ts).
-export const CURRENT_SCHEMA_VERSION = 4 as const;
+// v5 adds Element.placement ('free' sprites that float over a scene on a path) — additive +
+// a no-op 4→5 migration.
+export const CURRENT_SCHEMA_VERSION = 5 as const;
 
 // Source-data tier (RESERVED Step 4b). Charts reference a named dataset; large/messy
 // data is processed server-side and never inlined.
@@ -75,6 +77,14 @@ export type SceneAxis = z.infer<typeof SceneAxisSchema>;
 export const ELEMENT_TRACKS = ['content', 'media', 'background'] as const;
 export const ElementTrackSchema = z.enum(ELEMENT_TRACKS);
 export type ElementTrack = z.infer<typeof ElementTrackSchema>;
+
+// How an element is laid out (scene-timeline.md). `flow` (default, absent) = the normal
+// reading column / stage actor. `free` = a sprite that floats over the scene in a
+// viewport-fixed overlay, positioned by its `path` motion in stage % — the side-scroller's
+// jumping character. Orthogonal to `track` (which lane it groups under in the editor).
+export const ELEMENT_PLACEMENTS = ['flow', 'free'] as const;
+export const ElementPlacementSchema = z.enum(ELEMENT_PLACEMENTS);
+export type ElementPlacement = z.infer<typeof ElementPlacementSchema>;
 
 export const TimelineRangeSchema = z
 	.object({
@@ -192,6 +202,7 @@ export const ElementSchema = z.object({
 	track: ElementTrackSchema,
 	block: BlockSchema,
 	range: TimelineRangeSchema,
+	placement: ElementPlacementSchema.optional(), // absent = 'flow'
 	enter: EffectRefSchema.optional(),
 	exit: EffectRefSchema.optional(),
 	motion: EffectRefSchema.optional(),

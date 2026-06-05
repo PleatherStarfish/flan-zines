@@ -226,7 +226,10 @@ const migrations: Record<number, Migration> = {
 			schemaVersion: 4,
 			...(theme ? { theme } : {})
 		};
-	}
+	},
+	// v4 → v5 adds the optional Element.placement field. Nothing to transform — existing
+	// elements default to 'flow' (absent) — so this is a pure version advance (lossless).
+	4: (doc) => ({ ...doc, schemaVersion: 5 })
 };
 
 export class DocumentError extends Error {

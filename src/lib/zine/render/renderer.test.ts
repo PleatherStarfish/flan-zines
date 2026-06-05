@@ -45,7 +45,7 @@ describe('ZineRenderer', () => {
 
 	it('applies timeline scrub state only when the editor preview provides scene progress', () => {
 		const document = parseDocument({
-			schemaVersion: 4,
+			schemaVersion: 5,
 			theme: {},
 			acts: [
 				{
@@ -100,7 +100,7 @@ describe('ZineRenderer', () => {
 	it('sizes and pins a timeline scene to its scroll distance, but leaves page scenes in flow', () => {
 		const make = (type: string, scrollLength?: number) =>
 			parseDocument({
-				schemaVersion: 4,
+				schemaVersion: 5,
 				acts: [
 					{
 						id: 'act',
@@ -149,7 +149,7 @@ describe('ZineRenderer', () => {
 
 	it('renders a side-scroll scene as a stage of actors that pans with scroll progress', () => {
 		const document = parseDocument({
-			schemaVersion: 4,
+			schemaVersion: 5,
 			acts: [
 				{
 					id: 'act',
@@ -208,7 +208,7 @@ describe('ZineRenderer', () => {
 		})) as typeof window.matchMedia;
 		try {
 			const document = parseDocument({
-				schemaVersion: 4,
+				schemaVersion: 5,
 				acts: [
 					{
 						id: 'act',

@@ -6,6 +6,7 @@ import type {
 	Block,
 	Beat,
 	Element,
+	ElementPlacement,
 	ElementTrack,
 	Scene,
 	SceneAxis,
@@ -14,6 +15,7 @@ import type {
 	SceneType,
 	ZineDocument
 } from '$lib/zine/schema/document';
+import type { Waypoint } from '$lib/zine/animations/path';
 import { parseDocument } from '$lib/zine/schema/migrate';
 import type { BlockStyle, SectionKind } from '$lib/zine/schema/theme';
 import type { Theme, ThemeColors, ThemeRole } from '$lib/zine/schema/theme';
@@ -25,7 +27,29 @@ import { DraftSaver, type SavePayload, type SaveResult, type SaveStatus } from '
 enablePatches();
 
 type HistoryEntry = { patches: Patch[]; inverse: Patch[] };
-type StarterBlock = { type: string; props?: unknown; track?: ElementTrack };
+type StarterBlock = {
+	type: string;
+	props?: unknown;
+	track?: ElementTrack;
+	placement?: ElementPlacement;
+	motion?: EffectRef;
+	range?: Element['range'];
+};
+
+// A platform sits at a point along the side-scroll track (range.start → its left position);
+// the reader scrolls and the stage pans to reveal them left-to-right.
+const platform = (at: number): StarterBlock => ({
+	type: 'heading',
+	props: { text: '🟩🟩🟩', level: 3 },
+	track: 'media',
+	range: { start: at, end: Math.min(1, at + 0.08) }
+});
+// The character: a free sprite that jumps (arc) across the screen as the reader scrolls.
+const jumpWaypoints: Waypoint[] = [
+	{ at: 0, x: 18, y: 72, scale: 1, rotate: 0, ease: 'smooth' },
+	{ at: 0.5, x: 50, y: 64, scale: 1, rotate: 0, ease: 'arc' },
+	{ at: 1, x: 84, y: 70, scale: 1, rotate: 0, ease: 'arc' }
+];
 
 const STARTER_SCENES: Record<SceneType, StarterBlock[]> = {
 	page: [{ type: 'heading', props: { text: 'New scene', level: 2 } }, { type: 'richText' }],
@@ -36,7 +60,22 @@ const STARTER_SCENES: Record<SceneType, StarterBlock[]> = {
 		{ type: 'image', track: 'media' }
 	],
 	parallax: [{ type: 'image', track: 'media' }, { type: 'richText' }],
-	sidescroll: [{ type: 'image', track: 'media' }],
+	// A starter platformer: clouds + platforms along the track, and a free character that
+	// jumps across the screen on a path. Open the character's clip to fine-tune the jumps.
+	sidescroll: [
+		{ type: 'heading', props: { text: '☁️      ☁️', level: 2 }, track: 'background' },
+		platform(0.12),
+		platform(0.46),
+		platform(0.8),
+		{
+			type: 'heading',
+			props: { text: '🧍', level: 2 },
+			track: 'media',
+			placement: 'free',
+			range: { start: 0, end: 1 },
+			motion: { type: 'path', params: { waypoints: jumpWaypoints } }
+		}
+	],
 	data: [{ type: 'heading', props: { text: 'What changes?', level: 2 } }, { type: 'richText' }]
 };
 
@@ -60,7 +99,7 @@ type DraftShadow = Omit<z.infer<typeof DraftShadowSchema>, 'document'> & {
 };
 
 export class EditorStore {
-	doc = $state<ZineDocument>({ schemaVersion: 4, acts: [] });
+	doc = $state<ZineDocument>({ schemaVersion: 5, acts: [] });
 	selectedId = $state<string | null>(null);
 	mode = $state<'edit' | 'preview'>('edit');
 	saveStatus = $state<SaveStatus>('idle');
@@ -406,6 +445,25 @@ export class EditorStore {
 			else delete element[slot];
 		});
 	}
+	/** Set (or clear, with `undefined`/`flow`) an element's placement — `free` = a sprite that
+	 *  floats over the scene, positioned by its path motion. */
+	setElementPlacement(elementId: string, placement: ElementPlacement | undefined): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (!element) return;
+			if (placement === 'free') element.placement = 'free';
+			else delete element.placement;
+		});
+	}
+	/** Make an element a free sprite that follows `waypoints` on scroll (the `path` motion). */
+	setElementPath(elementId: string, waypoints: Waypoint[]): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (!element) return;
+			element.placement = 'free';
+			element.motion = { type: 'path', params: { waypoints: structuredClone(waypoints) } };
+		});
+	}
 	moveElement(elementId: string, dir: 'up' | 'down'): void {
 		this.mutate((draft) => {
 			const found = findElement(draft, elementId);
@@ -659,7 +717,9 @@ function createElementFromStarter(starter: StarterBlock): Element | null {
 			type: starter.type,
 			props: parsed.success ? parsed.data : def.defaults
 		} as Block,
-		range: { start: 0, end: 1 }
+		range: starter.range ?? { start: 0, end: 1 },
+		...(starter.placement ? { placement: starter.placement } : {}),
+		...(starter.motion ? { motion: starter.motion } : {})
 	};
 }
 

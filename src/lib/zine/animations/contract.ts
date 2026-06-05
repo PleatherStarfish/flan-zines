@@ -84,8 +84,14 @@ export interface AnimationDef<P = unknown> {
 	schema: ZodType<P>;
 	/** Valid default params (must pass `schema` — enforced by the registry test). */
 	defaults: P;
-	/** ≤3 inspector chips. */
+	/** ≤3 inspector chips. Empty for effects authored through a deep `editor` instead. */
 	knobs: KnobMeta[];
+	/**
+	 * A deep authoring surface this effect uses INSTEAD of knob chips (the sanctioned
+	 * exception to "≤3 picture-chips"). `'path'` opens the visual stage editor where the
+	 * author scrubs the scroll and drags control points. Absent = the normal knob funnel.
+	 */
+	editor?: 'path';
 	reducedMotion: ReducedMotionFallback;
 	/** Lazy import → the impl stays out of a text-only zine's base bundle. */
 	load: () => Promise<EffectImpl<P>>;

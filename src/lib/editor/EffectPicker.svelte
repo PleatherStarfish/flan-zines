@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { effectsForSlot, getBlock } from '$lib/zine/registry';
+	import { DEFAULT_WAYPOINTS } from '$lib/zine/animations/path';
 	import type { AnyAnimationDef, EffectSlot } from '$lib/zine/schema/animation';
 	import type { Element } from '$lib/zine/schema/document';
 	import type { EditorStore } from './store.svelte';
@@ -7,8 +8,13 @@
 	// Funnel B (scene-timeline.md §6): tap a clip → pick what it should do. Each slot
 	// offers "Still" + a short, picture-led list of effects (filtered to the block's
 	// allowedAnimations), then at most three knob chips — Speed / Direction / Amount,
-	// never a number. Writes registry EffectRefs to the element's enter/exit/motion slots.
-	let { store, element }: { store: EditorStore; element: Element } = $props();
+	// never a number. The exception is a deep-`editor` effect (Choreograph), which opens the
+	// visual stage instead. Writes registry EffectRefs to the element's enter/exit/motion slots.
+	let {
+		store,
+		element,
+		onEditPath
+	}: { store: EditorStore; element: Element; onEditPath?: (elementId: string) => void } = $props();
 
 	type SlotSection = { slot: EffectSlot; title: string; group: AnyAnimationDef['group'] };
 	const sections: SlotSection[] = [
@@ -39,6 +45,17 @@
 	function chooseEffect(slot: EffectSlot, def: AnyAnimationDef | null): void {
 		if (!def) {
 			store.setElementEffect(element.id, slot, undefined);
+			// Leaving a path also drops the free placement so the element returns to the flow.
+			if (slot === 'motion' && element.placement === 'free')
+				store.setElementPlacement(element.id, undefined);
+			return;
+		}
+		if (def.editor === 'path') {
+			// Choreograph: make it a free sprite on a starter path spanning the scene, then open
+			// the visual stage to author the control points.
+			store.setElementPath(element.id, structuredClone(DEFAULT_WAYPOINTS));
+			store.updateElementRange(element.id, { start: 0, end: 1 });
+			onEditPath?.(element.id);
 			return;
 		}
 		store.setElementEffect(element.id, slot, {
@@ -99,7 +116,11 @@
 
 					{#if active}
 						{@const def = options.find((option) => option.type === active)}
-						{#if def}
+						{#if def?.editor === 'path'}
+							<button type="button" class="edit-path" onclick={() => onEditPath?.(element.id)}>
+								✎ Edit the path
+							</button>
+						{:else if def}
 							{#each def.knobs as knob (knob.key)}
 								<div class="knob" role="group" aria-label={knob.label}>
 									<span class="knob__label">{knob.label}</span>
@@ -212,7 +233,18 @@
 		border-color: hsl(var(--primary));
 		background: hsl(var(--muted));
 	}
+	.edit-path {
+		width: 100%;
+		border: 1px solid hsl(var(--primary));
+		border-radius: 0.45rem;
+		background: hsl(var(--primary) / 0.1);
+		padding: 0.5rem;
+		font-size: 0.84rem;
+		font-weight: 760;
+		color: hsl(var(--foreground));
+	}
 	.effect-chip:focus-visible,
+	.edit-path:focus-visible,
 	.knob__options button:focus-visible {
 		outline: 2px solid hsl(var(--primary));
 		outline-offset: 2px;

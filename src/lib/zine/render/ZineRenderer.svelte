@@ -141,11 +141,28 @@
 		return scene.background?.fill?.kind === 'canvas';
 	}
 
+	// `free` elements are sprites that float over the scene on a path. Under reduced motion they
+	// fall back to normal in-flow source order (fully readable, no overlay), so `free` only
+	// applies when motion is on. Keyed off the general `placement` field, never the effect type.
+	function hasFreeElements(scene: Scene): boolean {
+		return !rm && scene.elements.some((element) => element.placement === 'free');
+	}
+	function freeElementsFor(scene: Scene): Element[] {
+		return rm ? [] : scene.elements.filter((element) => element.placement === 'free');
+	}
+	function flowElementsFor(scene: Scene): Element[] {
+		return rm ? scene.elements : scene.elements.filter((element) => element.placement !== 'free');
+	}
+
 	function isPinned(scene: Scene): boolean {
 		// Under reduced motion every scene lays out in normal source order (scene-timeline.md
 		// §8) — no tall pinned region to scroll past, just a readable page. A canvas background
-		// pins so it can be the full-screen backdrop the design calls for.
-		return pinScenes && !rm && (scene.type !== 'page' || hasCanvasBackground(scene));
+		// or free sprites pin so they get a full-screen, viewport-fixed stage to play over.
+		return (
+			pinScenes &&
+			!rm &&
+			(scene.type !== 'page' || hasCanvasBackground(scene) || hasFreeElements(scene))
+		);
 	}
 
 	function sceneSectionStyle(scene: Scene): string | undefined {
@@ -187,6 +204,8 @@
 			{#each act.scenes as scene (scene.id)}
 				{@const progress = progressFor(scene.id)}
 				{@const horizontal = isHorizontal(scene)}
+				{@const flowElements = flowElementsFor(scene)}
+				{@const freeElements = freeElementsFor(scene)}
 				<section
 					class="zine-scene"
 					data-type={scene.type}
@@ -210,7 +229,7 @@
 					>
 						{#if horizontal}
 							<div class="zine-stage" style={stageStyle(scene, progress)}>
-								{#each scene.elements as element (element.id)}
+								{#each flowElements as element (element.id)}
 									{@const def = getBlock(element.block.type)}
 									{@const timeline = composeElementStyle(element, progress, impls, {
 										reducedMotion: rm,
@@ -234,7 +253,7 @@
 								{/each}
 							</div>
 						{:else}
-							{#each scene.elements as element (element.id)}
+							{#each flowElements as element (element.id)}
 								{@const block = element.block}
 								{@const def = getBlock(block.type)}
 								{@const timeline = composeElementStyle(element, progress, impls, {
@@ -254,6 +273,36 @@
 									</BlockFrame>
 								{/if}
 							{/each}
+						{/if}
+
+						{#if freeElements.length}
+							<!-- Free sprites float over the scene in a viewport-fixed stage (a `size`
+							     container so a path's cqw/cqh resolve to viewport %). Their `path`
+							     motion positions them; with no motion they centre. Under reduced motion
+							     free elements instead lay out in flow above (so this overlay is empty). -->
+							<div class="zine-stage-overlay">
+								{#each freeElements as element (element.id)}
+									{@const def = getBlock(element.block.type)}
+									{@const timeline = composeElementStyle(element, progress, impls, {
+										reducedMotion: rm
+									})}
+									{#if def}
+										{@const Render = def.Render}
+										<div class="zine-free-actor" data-track={element.track}>
+											<BlockFrame
+												blockId={element.id}
+												label={def.label}
+												style={element.block.style}
+												animation={element.legacyAnimation}
+												timelineStyle={timeline.style || undefined}
+												timelineActive={timeline.active}
+											>
+												<Render props={element.block.props} />
+											</BlockFrame>
+										</div>
+									{/if}
+								{/each}
+							</div>
 						{/if}
 					</div>
 				</section>
@@ -357,6 +406,39 @@
 	}
 	.zine-actor :global(.zine-block) {
 		max-width: 100%;
+	}
+	/* Free-sprite stage: a viewport-fixed layer over the pinned scene. `container-type: size`
+	   makes a path's cqw/cqh resolve to this layer (≈ the viewport), so positions are stage %.
+	   The layer ignores the pointer so it never blocks scrolling; sprites opt back in. */
+	.zine-stage-overlay {
+		position: absolute;
+		inset: 0;
+		z-index: 2;
+		container-type: size;
+		overflow: hidden;
+		pointer-events: none;
+	}
+	.zine-free-actor {
+		position: absolute;
+		left: 0;
+		top: 0;
+		pointer-events: auto;
+	}
+	/* The block carries the path transform (inline, from the timeline). Its default — used when
+	   there's no motion, e.g. reduced-motion — centres the sprite on the stage. `- 50%` offsets
+	   by the sprite's own half-size so the waypoint is its CENTRE. */
+	.zine-free-actor :global(.zine-block) {
+		max-width: min(46cqw, 22rem);
+		width: max-content;
+		margin: 0;
+		padding: 0;
+		transform: translate(calc(50cqw - 50%), calc(50cqh - 50%));
+		will-change: transform;
+	}
+	.zine-free-actor :global(.zine-image),
+	.zine-free-actor :global(.zine-image img) {
+		max-height: 46cqh;
+		width: auto;
 	}
 	:global(.zine .zine-block) {
 		max-width: var(--zine-measure);

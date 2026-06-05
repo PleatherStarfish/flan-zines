@@ -31,7 +31,7 @@ describe('document migrations', () => {
 				{ id: 'sec_c', layout: 'split', blocks: [] }
 			]
 		});
-		expect(raw.schemaVersion).toBe(4);
+		expect(raw.schemaVersion).toBe(5);
 		const acts = raw.acts as Array<{ scenes: Array<Record<string, unknown>> }>;
 		expect(acts).toHaveLength(1);
 		expect(acts[0].scenes.map((scene) => scene.type)).toEqual(['page', 'feature', 'feature']);
@@ -57,7 +57,7 @@ describe('document migrations', () => {
 			]
 		});
 
-		expect(doc.schemaVersion).toBe(4);
+		expect(doc.schemaVersion).toBe(5);
 		expect(doc.acts).toHaveLength(1);
 		expect(doc.acts[0].scenes.map((scene) => scene.type)).toEqual(['feature', 'page']);
 		expect(doc.acts[0].scenes[0].presentation).toEqual({
@@ -127,7 +127,7 @@ describe('document migrations', () => {
 			theme: { palette: 'dusk', fontPair: 'mono', accent: '#38bdf8' },
 			acts: [{ id: 'act_1', scenes: [] }]
 		});
-		expect(doc.schemaVersion).toBe(4);
+		expect(doc.schemaVersion).toBe(5);
 		// Legacy keys resolve to the same colours the dusk palette rendered (appearance preserved).
 		expect(doc.theme?.colors).toEqual({
 			background: '#161a23',
@@ -146,7 +146,17 @@ describe('document migrations', () => {
 
 	it('leaves a themeless v3 document themeless after the 3→4 migration', () => {
 		const doc = parseDocument({ schemaVersion: 3, acts: [{ id: 'act_1', scenes: [] }] });
-		expect(doc.schemaVersion).toBe(4);
+		expect(doc.schemaVersion).toBe(5);
 		expect(doc.theme).toBeUndefined();
+	});
+
+	it('advances a v4 document to v5 unchanged (placement is additive)', () => {
+		const raw = migrateToLatest({
+			schemaVersion: 4,
+			theme: { colors: undefined },
+			acts: [{ id: 'act_1', scenes: [] }]
+		});
+		expect(raw.schemaVersion).toBe(5);
+		expect(raw.acts).toEqual([{ id: 'act_1', scenes: [] }]);
 	});
 });

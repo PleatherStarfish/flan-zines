@@ -187,6 +187,19 @@ particles on weak hardware; **degraded** under `prefers-reduced-motion`. This is
 student-facing presets. `EffectId` is a union of registered effect ids — adding an effect is a registry
 entry (schema + lazy `load()` + `reducedMotion` + thumbnail), **no core edits**.
 
+### Path choreography & free placement [IMPLEMENTED]
+
+Beyond the ≤3-knob presets, an element can be **choreographed along a path** — moved between authored
+**control points** as the reader scrolls, with per-segment easing including a **jump arc** (the
+side-scroller's "jump up to the platform"). This is the **`path` motion** effect — the sanctioned
+deep-`editor` exception to "≤3 chips": its params are an ordered waypoint list, authored by direct
+manipulation on a **WYSIWYG stage** ([`PathEditor.svelte`](../../src/lib/editor/PathEditor.svelte), opened
+by clicking the clip's bar). It pairs with **`Element.placement: 'free'`** (schemaVersion 5) — a sprite
+that floats over the scene in a viewport-fixed overlay, positioned in stage % via container-query units.
+Still transform/opacity-only and lazy-loaded; under reduced motion a free element lays out in flow
+(readable source order). The starter "Side-scroller game" scene seeds a character + platforms + a jump
+path. See [adding-an-effect.md](../adding-an-effect.md).
+
 ---
 
 ## 6. Simple choices & funnels (so it never overwhelms) [COMMITTED]

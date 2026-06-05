@@ -27,6 +27,7 @@ import {
 	type RiseParams,
 	type SlideParams
 } from './schema';
+import { PathParamsSchema, type PathParams } from './path';
 
 const effects = new Map<string, AnyAnimationDef>();
 
@@ -166,4 +167,21 @@ registerEffect<KenBurnsParams>({
 	knobs: [SPEED_KNOB, AMOUNT_KNOB],
 	reducedMotion: 'static',
 	load: () => import('./impls/motion').then((m) => m.kenBurns as EffectImpl<KenBurnsParams>)
+});
+
+// Choreograph — the deep-editor exception: an element follows authored control points along
+// the scroll. No knob chips; the visual Path Editor writes its waypoints. Pairs with a
+// `placement: 'free'` element so it floats over the scene (the side-scroller / platformer).
+registerEffect<PathParams>({
+	type: 'path',
+	label: 'Choreograph',
+	group: 'motion',
+	slots: ['motion'],
+	icon: '🧭',
+	schema: PathParamsSchema,
+	defaults: PathParamsSchema.parse({}),
+	knobs: [],
+	editor: 'path',
+	reducedMotion: 'static',
+	load: () => import('./impls/path').then((m) => m.path as EffectImpl<PathParams>)
 });

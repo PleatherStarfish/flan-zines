@@ -9,7 +9,7 @@ export const linkButtonBlock: BlockDef<LinkButtonProps> = {
 	category: 'structure',
 	schema: LinkButtonPropsSchema,
 	defaults: { href: 'https://pudding.cool', label: 'Read more', variant: 'link', newTab: false },
-	allowedAnimations: ['fade', 'rise', 'pop', 'fly-in'],
+	allowedAnimations: ['fade', 'rise', 'pop', 'fly-in', 'path'],
 	Render,
 	Inspector
 };

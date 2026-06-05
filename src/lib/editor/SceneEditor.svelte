@@ -4,10 +4,18 @@
 	import EffectPicker from './EffectPicker.svelte';
 	import SectionInspector from './SectionInspector.svelte';
 	import SceneTimeline from './SceneTimeline.svelte';
+	import PathEditor from './PathEditor.svelte';
 	import type { EditorStore } from './store.svelte';
 
 	let { store, sceneId, onBack }: { store: EditorStore; sceneId: string; onBack: () => void } =
 		$props();
+
+	// The choreography ("click-through") stage opens for one free element at a time.
+	let pathEditorElementId = $state<string | null>(null);
+	function openPathEditor(id: string): void {
+		store.select(id);
+		pathEditorElementId = id;
+	}
 
 	const typeLabels: Record<SceneType, string> = {
 		page: 'Page',
@@ -30,7 +38,7 @@
 	const document = $derived<ZineDocument | null>(
 		scene
 			? {
-					schemaVersion: 4,
+					schemaVersion: 5,
 					theme: store.doc.theme,
 					acts: [{ id: 'act_scene_editor', scenes: [scene] }]
 				}
@@ -74,13 +82,13 @@
 
 		<div class="scene-editor__layout">
 			<main class="timeline-surface">
-				<SceneTimeline {store} {scene} {document} />
+				<SceneTimeline {store} {scene} {document} onEditPath={openPathEditor} />
 			</main>
 
 			<aside class="scene-inspector" aria-label="Scene inspector">
 				{#if selectedBlock}
 					{#key selectedBlock.element.id}
-						<EffectPicker {store} element={selectedBlock.element} />
+						<EffectPicker {store} element={selectedBlock.element} onEditPath={openPathEditor} />
 						<section class="choice-panel" aria-label="Clip placement">
 							<h3>Where does it live?</h3>
 							<div class="chip-grid">
@@ -102,6 +110,16 @@
 				{/if}
 			</aside>
 		</div>
+
+		{#if pathEditorElementId}
+			<PathEditor
+				{store}
+				{scene}
+				{document}
+				elementId={pathEditorElementId}
+				onClose={() => (pathEditorElementId = null)}
+			/>
+		{/if}
 	</section>
 {:else}
 	<section class="missing-scene">

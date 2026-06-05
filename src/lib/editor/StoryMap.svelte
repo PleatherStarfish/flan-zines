@@ -17,7 +17,7 @@
 		{ type: 'feature', label: 'Big picture' },
 		{ type: 'reveal', label: 'Reveal steps' },
 		{ type: 'parallax', label: 'Picture moves' },
-		{ type: 'sidescroll', label: 'Side to side' },
+		{ type: 'sidescroll', label: 'Side-scroller game' },
 		{ type: 'data', label: 'Data story' }
 	];
 	const typeLabels: Record<SceneType, string> = {

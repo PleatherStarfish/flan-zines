@@ -43,7 +43,7 @@ function scene(type: SceneType, blocks: RawBlock[], label?: string): RawScene {
 }
 function story(scenes: RawScene[]): Record<string, unknown> {
 	return {
-		schemaVersion: 4,
+		schemaVersion: 5,
 		theme: {},
 		acts: [{ id: newActId(), scenes }]
 	};

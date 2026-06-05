@@ -11,7 +11,7 @@ const wrap = (block: unknown) => ({
 describe('document schema', () => {
 	it('parses the sample fixture as the current v3 story model', () => {
 		const doc = parseDocument(sampleZineRaw);
-		expect(doc.schemaVersion).toBe(4);
+		expect(doc.schemaVersion).toBe(5);
 		expect(doc.acts).toHaveLength(1);
 		expect(doc.acts[0].scenes).toHaveLength(2);
 		expect(doc.acts[0].scenes[0].type).toBe('page');
@@ -28,7 +28,7 @@ describe('document schema', () => {
 
 	it('rejects a page scene without exactly one beat at 0', () => {
 		const result = safeParseDocument({
-			schemaVersion: 4,
+			schemaVersion: 5,
 			acts: [
 				{
 					id: 'act',
@@ -50,7 +50,7 @@ describe('document schema', () => {
 
 	it('rejects an element anchorBeat outside its scene', () => {
 		const result = safeParseDocument({
-			schemaVersion: 4,
+			schemaVersion: 5,
 			acts: [
 				{
 					id: 'act',
@@ -151,7 +151,7 @@ describe('document schema', () => {
 
 	it('accepts an explicit per-scene scrollLength and resolves scroll distance', () => {
 		const doc = parseDocument({
-			schemaVersion: 4,
+			schemaVersion: 5,
 			acts: [
 				{
 					id: 'act',
@@ -180,7 +180,7 @@ describe('document schema', () => {
 	it('accepts a scene scrollAxis and rejects an unknown one', () => {
 		const make = (axis: string) =>
 			safeParseDocument({
-				schemaVersion: 4,
+				schemaVersion: 5,
 				acts: [
 					{
 						id: 'act',
@@ -206,7 +206,7 @@ describe('document schema', () => {
 	it('validates scene background fills (media URLs + registry-backed canvas presets)', () => {
 		const withBg = (background: unknown) =>
 			safeParseDocument({
-				schemaVersion: 4,
+				schemaVersion: 5,
 				acts: [
 					{
 						id: 'act',
@@ -262,7 +262,7 @@ describe('document schema', () => {
 
 	it('rejects a scrollLength outside the supported range', () => {
 		const result = safeParseDocument({
-			schemaVersion: 4,
+			schemaVersion: 5,
 			acts: [
 				{
 					id: 'act',
@@ -280,5 +280,54 @@ describe('document schema', () => {
 			]
 		});
 		expect(result.ok).toBe(false);
+	});
+
+	it('accepts a free element with a path motion and round-trips placement', () => {
+		const makeFree = (placement: unknown) =>
+			safeParseDocument({
+				schemaVersion: 5,
+				acts: [
+					{
+						id: 'act',
+						scenes: [
+							{
+								id: 'scn',
+								type: 'reveal',
+								length: 'auto',
+								beats: [{ id: 'beat', at: 0 }],
+								elements: [
+									{
+										id: 'el_hero',
+										track: 'media',
+										placement,
+										range: { start: 0, end: 1 },
+										block: { id: 'blk', type: 'image', props: { src: '/x.svg', alt: 'hero' } },
+										motion: {
+											type: 'path',
+											params: {
+												waypoints: [
+													{ at: 0, x: 10, y: 80 },
+													{ at: 0.5, x: 50, y: 80, ease: 'arc' },
+													{ at: 1, x: 90, y: 40, ease: 'arc' }
+												]
+											}
+										}
+									}
+								]
+							}
+						]
+					}
+				]
+			});
+		const ok = makeFree('free');
+		expect(ok.ok).toBe(true);
+		if (ok.ok) {
+			const element = ok.document.acts[0].scenes[0].elements[0];
+			expect(element.placement).toBe('free');
+			// Waypoint defaults (scale/rotate/ease) are filled by the effect schema.
+			const params = element.motion?.params as { waypoints: { ease: string; scale: number }[] };
+			expect(params.waypoints[0]).toMatchObject({ scale: 1, ease: 'smooth' });
+		}
+		expect(makeFree('floating').ok).toBe(false); // unknown placement rejected
 	});
 });

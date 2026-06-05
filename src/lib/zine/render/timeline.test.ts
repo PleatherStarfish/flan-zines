@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { composeElementStyle, rampFraction, RAMP, type EffectImplMap } from './timeline';
+import type { EffectImpl } from '../animations/contract';
 import type { Element } from '../schema/document';
 import { fade, flyIn, rise } from '../animations/impls/appear';
 import { parallax } from '../animations/impls/motion';
+import { path } from '../animations/impls/path';
 
 function element(over: Partial<Element>): Element {
 	return {
@@ -126,5 +128,24 @@ describe('composeElementStyle', () => {
 		expect(state.hidden).toBe(true);
 		expect(state.style).toContain('opacity:0.000');
 		expect(fade({ phase: 0, params: { speed: 'medium' } }).opacity).toBe(0);
+	});
+
+	it('drives a free element along its path motion (control points → transform)', () => {
+		const el = element({
+			placement: 'free',
+			motion: {
+				type: 'path',
+				params: {
+					waypoints: [
+						{ at: 0, x: 10, y: 50, scale: 1, rotate: 0, ease: 'linear' },
+						{ at: 1, x: 90, y: 50, scale: 1, rotate: 0, ease: 'linear' }
+					]
+				}
+			}
+		});
+		const impls: EffectImplMap = new Map([['path', path as unknown as EffectImpl]]);
+		expect(composeElementStyle(el, 0, impls).style).toContain('translate(calc(10.00cqw - 50%)');
+		expect(composeElementStyle(el, 0.5, impls).style).toContain('translate(calc(50.00cqw - 50%)');
+		expect(composeElementStyle(el, 1, impls).style).toContain('translate(calc(90.00cqw - 50%)');
 	});
 });

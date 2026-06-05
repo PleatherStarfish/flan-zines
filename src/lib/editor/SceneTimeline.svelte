@@ -15,8 +15,26 @@
 	import type { Speed } from '$lib/zine/animations/schema';
 	import type { EditorStore } from './store.svelte';
 
-	let { store, scene, document }: { store: EditorStore; scene: Scene; document: ZineDocument } =
-		$props();
+	let {
+		store,
+		scene,
+		document,
+		onEditPath
+	}: {
+		store: EditorStore;
+		scene: Scene;
+		document: ZineDocument;
+		onEditPath?: (elementId: string) => void;
+	} = $props();
+
+	// A `path` (Choreograph) clip is the "click-through": tapping its bar opens the stage editor.
+	function isPathElement(element: Element): boolean {
+		return element.motion?.type === 'path';
+	}
+	function onClipClick(element: Element): void {
+		store.select(element.id);
+		if (isPathElement(element)) onEditPath?.(element.id);
+	}
 
 	const tracks: ElementTrack[] = ['content', 'media', 'background'];
 	const trackLabels: Record<ElementTrack, string> = {
@@ -535,14 +553,17 @@
 									<button
 										type="button"
 										class="clip__body"
-										aria-label={`${elementLabel(element)}${clipEffectLabel(element) ? ' · ' + clipEffectLabel(element) : ''} from ${Math.round(range.start * 100)} to ${Math.round(range.end * 100)} percent`}
+										class:is-path={isPathElement(element)}
+										aria-label={`${elementLabel(element)}${clipEffectLabel(element) ? ' · ' + clipEffectLabel(element) : ''} from ${Math.round(range.start * 100)} to ${Math.round(range.end * 100)} percent${isPathElement(element) ? ' — open the path editor' : ''}`}
 										aria-pressed={selected}
-										onclick={() => store.select(element.id)}
+										onclick={() => onClipClick(element)}
 										onpointerdown={(event) => beginClipDrag(event, element, 'move')}
 										onkeydown={(event) => keyClip(event, element)}
 									>
 										<span>{elementLabel(element)}</span>
-										{#if clipEffectLabel(element)}
+										{#if isPathElement(element)}
+											<span class="clip__fx">🧭 Edit path</span>
+										{:else if clipEffectLabel(element)}
 											<span class="clip__fx">{clipEffectLabel(element)}</span>
 										{/if}
 									</button>

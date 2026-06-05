@@ -14,7 +14,7 @@ export const richTextBlock: BlockDef<RichTextProps> = {
 			content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Start writing…' }] }]
 		}
 	},
-	allowedAnimations: ['fade', 'rise', 'slide', 'fly-in'],
+	allowedAnimations: ['fade', 'rise', 'slide', 'fly-in', 'path'],
 	Render,
 	Inspector
 };

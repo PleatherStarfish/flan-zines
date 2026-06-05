@@ -3,7 +3,17 @@ import { allEffects, effectIds, effectsForSlot, getEffect, registerEffect } from
 import type { EffectGroup, EffectSlot, ReducedMotionFallback } from './contract';
 import { allBlocks } from '../registry';
 
-const CATALOGUE = ['fade', 'rise', 'slide', 'pop', 'fly-in', 'parallax', 'float', 'ken-burns'];
+const CATALOGUE = [
+	'fade',
+	'rise',
+	'slide',
+	'pop',
+	'fly-in',
+	'parallax',
+	'float',
+	'ken-burns',
+	'path'
+];
 const GROUPS: EffectGroup[] = ['appear', 'motion'];
 const SLOTS: EffectSlot[] = ['enter', 'exit', 'motion'];
 const FALLBACKS: ReducedMotionFallback[] = ['static', 'passthrough'];
