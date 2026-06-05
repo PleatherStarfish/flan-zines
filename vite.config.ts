@@ -6,6 +6,10 @@ export default defineConfig({
 	// svelteTesting() wires @testing-library/svelte for vitest (client-build
 	// resolution + auto-cleanup); it only affects test runs, not build/dev.
 	plugins: [sveltekit(), svelteTesting()],
+	// Distinctive high ports so this project never collides with other local servers
+	// (storybook runs on 38410; e2e preview on 38420 — see playwright.config.ts).
+	server: { port: 38400, strictPort: true },
+	preview: { port: 38420, strictPort: true },
 	test: {
 		// Default to node for the pure-TS unit, RLS, and migration suites. Component
 		// tests opt into jsdom per-file with `// @vitest-environment jsdom` and mount

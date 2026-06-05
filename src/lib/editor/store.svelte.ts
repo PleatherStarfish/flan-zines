@@ -6,7 +6,10 @@ import type {
 	Block,
 	Beat,
 	Element,
+	ElementTrack,
 	Scene,
+	SceneAxis,
+	SceneBackground,
 	SceneLength,
 	SceneType,
 	ZineDocument
@@ -14,12 +17,27 @@ import type {
 import { parseDocument } from '$lib/zine/schema/migrate';
 import type { BlockStyle, SectionKind } from '$lib/zine/schema/theme';
 import type { Theme } from '$lib/zine/schema/theme';
+import type { AnimationDescriptor, EffectRef } from '$lib/zine/schema/animation';
 import { newActId, newBeatId, newBlockId, newElementId, newSceneId } from './ids';
 import { DraftSaver, type SavePayload, type SaveResult, type SaveStatus } from './autosave';
 
 enablePatches();
 
 type HistoryEntry = { patches: Patch[]; inverse: Patch[] };
+type StarterBlock = { type: string; props?: unknown; track?: ElementTrack };
+
+const STARTER_SCENES: Record<SceneType, StarterBlock[]> = {
+	page: [{ type: 'heading', props: { text: 'New scene', level: 2 } }, { type: 'richText' }],
+	feature: [{ type: 'image' }, { type: 'heading', props: { text: 'Picture moment', level: 2 } }],
+	reveal: [
+		{ type: 'heading', props: { text: 'Reveal moment', level: 2 } },
+		{ type: 'richText' },
+		{ type: 'image', track: 'media' }
+	],
+	parallax: [{ type: 'image', track: 'media' }, { type: 'richText' }],
+	sidescroll: [{ type: 'image', track: 'media' }],
+	data: [{ type: 'heading', props: { text: 'What changes?', level: 2 } }, { type: 'richText' }]
+};
 
 export interface EditorStoreOptions {
 	document: ZineDocument;
@@ -44,7 +62,6 @@ export class EditorStore {
 	doc = $state<ZineDocument>({ schemaVersion: 3, acts: [] });
 	selectedId = $state<string | null>(null);
 	mode = $state<'edit' | 'preview'>('edit');
-	device = $state<'desktop' | 'tablet' | 'mobile'>('desktop');
 	saveStatus = $state<SaveStatus>('idle');
 	canUndo = $state(false);
 	canRedo = $state(false);
@@ -123,9 +140,6 @@ export class EditorStore {
 	setMode(mode: 'edit' | 'preview'): void {
 		this.mode = mode;
 	}
-	setDevice(device: 'desktop' | 'tablet' | 'mobile'): void {
-		this.device = device;
-	}
 
 	// ── lookups ───────────────────────────────────────────────────────────────
 	get selectedElement(): { actId: string; sceneId: string; element: Element } | null {
@@ -178,18 +192,33 @@ export class EditorStore {
 	}
 
 	// ── scene intents ─────────────────────────────────────────────────────────
-	addScene(actId = this.doc.acts.at(-1)?.id ?? this.addAct(), type: SceneType = 'page'): string {
+	addScene(actId?: string, type: SceneType = 'page'): string {
 		const id = newSceneId();
+		const newActIdForScene = actId ?? this.doc.acts.at(-1)?.id ?? newActId();
 		this.mutate((draft) => {
-			const act = draft.acts.find((candidate) => candidate.id === actId);
-			if (!act) return;
-			act.scenes.push({
-				id,
-				type,
-				length: type === 'reveal' || type === 'parallax' || type === 'sidescroll' ? 'long' : 'auto',
-				beats: [{ id: newBeatId(), at: 0 }],
-				elements: []
-			});
+			let act = draft.acts.find((candidate) => candidate.id === newActIdForScene);
+			if (!act) {
+				act = { id: newActIdForScene, scenes: [] };
+				draft.acts.push(act);
+			}
+			act.scenes.push(createScene(id, type, []));
+		});
+		this.selectedId = id;
+		return id;
+	}
+	addStarterScene(actId: string | undefined, type: SceneType = 'page'): string {
+		const id = newSceneId();
+		const newActIdForScene = actId ?? this.doc.acts.at(-1)?.id ?? newActId();
+		this.mutate((draft) => {
+			let act = draft.acts.find((candidate) => candidate.id === newActIdForScene);
+			if (!act) {
+				act = { id: newActIdForScene, scenes: [] };
+				draft.acts.push(act);
+			}
+			const elements = STARTER_SCENES[type]
+				.map(createElementFromStarter)
+				.filter(Boolean) as Element[];
+			act.scenes.push(createScene(id, type, elements));
 		});
 		this.selectedId = id;
 		return id;
@@ -217,10 +246,59 @@ export class EditorStore {
 			if (scene) scene.length = length;
 		});
 	}
+	/** Set (or clear, with `undefined`) the scene's explicit scroll distance in whole screens. */
+	setSceneScroll(sceneId: string, screens: number | undefined): void {
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (!scene) return;
+			if (screens == null) delete scene.scrollLength;
+			else scene.scrollLength = Math.max(1, Math.round(screens));
+		});
+	}
+	/** Switch a scene between vertical and side-scroll. `vertical` is stored as absence. */
+	setSceneScrollAxis(sceneId: string, axis: SceneAxis): void {
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (!scene) return;
+			if (axis === 'vertical') delete scene.scrollAxis;
+			else scene.scrollAxis = axis;
+		});
+	}
+	/** Set (or clear, with `undefined`) the scene's background layer. Re-validated on save. */
+	setSceneBackground(sceneId: string, background: SceneBackground | undefined): void {
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (!scene) return;
+			if (background) scene.background = background;
+			else delete scene.background;
+		});
+	}
 	moveScene(sceneId: string, dir: 'up' | 'down'): void {
 		this.mutate((draft) => {
 			const found = findScene(draft, sceneId);
 			if (found) move(found.act.scenes, (scene) => scene.id === sceneId, dir);
+		});
+	}
+	moveSceneBefore(sceneId: string, targetSceneId: string): void {
+		if (sceneId === targetSceneId) return;
+		this.mutate((draft) => {
+			const moving = takeScene(draft, sceneId);
+			if (!moving) return;
+			const target = findSceneIndex(draft, targetSceneId);
+			if (!target) {
+				const fallback = draft.acts.at(-1);
+				fallback?.scenes.push(moving);
+				return;
+			}
+			target.act.scenes.splice(target.index, 0, moving);
+		});
+	}
+	moveSceneToActEnd(sceneId: string, actId: string): void {
+		this.mutate((draft) => {
+			const act = draft.acts.find((candidate) => candidate.id === actId);
+			if (!act) return;
+			const moving = takeScene(draft, sceneId);
+			if (moving) act.scenes.push(moving);
 		});
 	}
 	removeScene(sceneId: string): void {
@@ -253,28 +331,41 @@ export class EditorStore {
 	addElement(sceneId: string, type: string, afterElementId?: string): string | null {
 		const def = getBlock(type);
 		if (!def) return null;
-		const id = newElementId();
-		const newElement: Element = {
-			id,
-			track: def.category === 'media' ? 'media' : 'content',
-			block: { id: newBlockId(), type, props: structuredClone(def.defaults) } as Block,
-			range: { start: 0, end: 1 }
-		};
+		const newElement = createElementFromStarter({ type });
 		this.mutate((draft) => {
 			const scene = findScene(draft, sceneId)?.scene;
-			if (!scene) return;
+			if (!scene || !newElement) return;
 			const at = afterElementId
 				? scene.elements.findIndex((element) => element.id === afterElementId) + 1
 				: scene.elements.length;
 			scene.elements.splice(at, 0, newElement);
 		});
-		this.selectedId = id;
-		return id;
+		this.selectedId = newElement?.id ?? null;
+		return newElement?.id ?? null;
+	}
+	addElementAt(sceneId: string, type: string, track: ElementTrack, start = 0): string | null {
+		const newElement = createElementFromStarter({ type, track });
+		if (!newElement) return null;
+		const duration = track === 'media' ? 0.7 : 0.42;
+		newElement.range = rangeFromStart(start, duration);
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (!scene) return;
+			scene.elements.push(newElement);
+		});
+		this.selectedId = newElement.id;
+		return newElement.id;
 	}
 	updateElementBlockProps(elementId: string, props: unknown): void {
 		this.mutate((draft) => {
 			const element = findElement(draft, elementId)?.element;
 			if (element) element.block.props = props;
+		});
+	}
+	updateElementTrack(elementId: string, track: ElementTrack): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (element) element.track = track;
 		});
 	}
 	updateElementStyle(elementId: string, style: BlockStyle): void {
@@ -286,7 +377,32 @@ export class EditorStore {
 	updateElementRange(elementId: string, range: Element['range']): void {
 		this.mutate((draft) => {
 			const element = findElement(draft, elementId)?.element;
-			if (element) element.range = range;
+			if (element) element.range = normalizeRange(range);
+		});
+	}
+	updateElementLegacyAnimation(
+		elementId: string,
+		legacyAnimation: AnimationDescriptor | undefined
+	): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (element) element.legacyAnimation = legacyAnimation;
+		});
+	}
+	/**
+	 * Set (or clear, with `undefined`) one of an element's choreography slots. `ref` is a
+	 * registry EffectRef; it is re-validated against the effect's schema at save/render.
+	 */
+	setElementEffect(
+		elementId: string,
+		slot: 'enter' | 'exit' | 'motion',
+		ref: EffectRef | undefined
+	): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (!element) return;
+			if (ref) element[slot] = ref;
+			else delete element[slot];
 		});
 	}
 	moveElement(elementId: string, dir: 'up' | 'down'): void {
@@ -430,6 +546,24 @@ function findScene(draft: ZineDocument, sceneId: string): { act: Act; scene: Sce
 	return undefined;
 }
 
+function findSceneIndex(
+	draft: ZineDocument,
+	sceneId: string
+): { act: Act; index: number } | undefined {
+	for (const act of draft.acts) {
+		const index = act.scenes.findIndex((candidate) => candidate.id === sceneId);
+		if (index >= 0) return { act, index };
+	}
+	return undefined;
+}
+
+function takeScene(draft: ZineDocument, sceneId: string): Scene | undefined {
+	const found = findSceneIndex(draft, sceneId);
+	if (!found) return undefined;
+	const [scene] = found.act.scenes.splice(found.index, 1);
+	return scene;
+}
+
 function findElement(
 	draft: ZineDocument,
 	elementId: string
@@ -447,6 +581,55 @@ function sectionKindToSceneType(kind: SectionKind): SceneType {
 	if (kind === 'feature' || kind === 'split') return 'feature';
 	if (kind === 'scrolly') return 'reveal';
 	return 'page';
+}
+
+function createScene(id: string, type: SceneType, elements: Element[]): Scene {
+	return {
+		id,
+		type,
+		length: type === 'reveal' || type === 'parallax' || type === 'sidescroll' ? 'long' : 'auto',
+		// A side-scroll scene is born horizontal; everything else scrolls vertically.
+		...(type === 'sidescroll' ? { scrollAxis: 'horizontal' as const } : {}),
+		beats: [{ id: newBeatId(), at: 0 }],
+		elements
+	};
+}
+
+function createElementFromStarter(starter: StarterBlock): Element | null {
+	const def = getBlock(starter.type);
+	if (!def) return null;
+	const props = starter.props ?? structuredClone(def.defaults);
+	const parsed = def.schema.safeParse(props);
+	return {
+		id: newElementId(),
+		track: starter.track ?? (def.category === 'media' ? 'media' : 'content'),
+		block: {
+			id: newBlockId(),
+			type: starter.type,
+			props: parsed.success ? parsed.data : def.defaults
+		} as Block,
+		range: { start: 0, end: 1 }
+	};
+}
+
+function rangeFromStart(start: number, duration: number): Element['range'] {
+	const safeDuration = clamp(duration, 0.08, 1);
+	const safeStart = clamp(start, 0, 1 - safeDuration);
+	return { start: roundProgress(safeStart), end: roundProgress(safeStart + safeDuration) };
+}
+
+function normalizeRange(range: Element['range']): Element['range'] {
+	const start = clamp(range.start, 0, 0.99);
+	const end = clamp(range.end, start + 0.01, 1);
+	return { start: roundProgress(start), end: roundProgress(end) };
+}
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.max(min, Math.min(max, value));
+}
+
+function roundProgress(value: number): number {
+	return Math.round(value * 1000) / 1000;
 }
 
 function move<T>(arr: T[], match: (item: T) => boolean, dir: 'up' | 'down'): void {

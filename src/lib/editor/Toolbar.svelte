@@ -11,12 +11,6 @@
 		error: 'Couldn’t save — retrying',
 		conflict: 'Opened in another tab'
 	};
-
-	const devices = [
-		{ v: 'desktop', label: 'Desktop', icon: '🖥' },
-		{ v: 'tablet', label: 'Tablet', icon: '▭' },
-		{ v: 'mobile', label: 'Phone', icon: '▯' }
-	] as const;
 </script>
 
 <header
@@ -47,21 +41,6 @@
 			>
 				Preview
 			</button>
-		</div>
-
-		<div class="flex gap-1" role="group" aria-label="Preview width">
-			{#each devices as d (d.v)}
-				<button
-					type="button"
-					title={d.label}
-					aria-label={d.label}
-					aria-pressed={store.device === d.v}
-					onclick={() => store.setDevice(d.v)}
-					class="rounded-md border border-border px-2 py-1 text-sm aria-pressed:border-primary aria-pressed:bg-muted"
-				>
-					{d.icon}
-				</button>
-			{/each}
 		</div>
 
 		<div class="flex gap-1">

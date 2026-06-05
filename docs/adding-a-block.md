@@ -77,7 +77,7 @@ export const pullQuoteBlock: BlockDef<PullQuoteProps> = {
 	category: 'text',
 	schema: PullQuotePropsSchema,
 	defaults: { text: 'A line worth pausing on.' },
-	allowedAnimations: ['fade-up'],
+	allowedAnimations: ['fade'], // registered effect ids — see docs/adding-an-effect.md
 	Render,
 	Inspector
 };

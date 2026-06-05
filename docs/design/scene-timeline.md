@@ -292,14 +292,22 @@ Block props are untouched (validated by their registry schemas as today).
 
 ## 11. Build sequencing [COMMITTED]
 
-1. **Model v3 + migration** (Story/Act/Scene/Beat/Element) — additive over Steps 2–3; blocks reused;
+1. ✅ **Model v3 + migration** (Story/Act/Scene/Beat/Element) — additive over Steps 2–3; blocks reused;
    store/autosave/registry carried forward. Unit-tested migration + round-trip.
-2. **Story Map** (storyboard of scene cards) — replaces the outline; immediately friendlier.
-3. **Scene editor: `page`/`feature`** (the calm writing surface) — covers ~70% of student scenes with
+2. ✅ **Story Map** (storyboard of scene cards) — replaces the outline; immediately friendlier.
+3. ✅ **Scene editor: `page`/`feature`** (the calm writing surface) — covers ~70% of student scenes with
    zero timeline.
-4. **The timeline** for `parallax`/`reveal` + **Appear / Keep-moving** effects (GSAP + Scrollama) — the
-   centerpiece, with the scrubber + keyboard parity.
-5. **Ambient "magic"** (Threlte/Pixi particles) and **Data** scenes (beats + states) — heavy,
+4. ✅ **The timeline** for `parallax`/`reveal` + **Appear / Keep-moving** effects — the centerpiece, with
+   the scrubber + keyboard parity. _Built as the `AnimationDef` registry
+   ([`animations/registry.ts`](../../src/lib/zine/animations/registry.ts)) + the curated catalogue
+   (fade · rise · slide · pop · parallax · float · gentle-zoom), the inspector funnel
+   ([`EffectPicker.svelte`](../../src/lib/editor/EffectPicker.svelte)), and progress-driven rendering
+   ([`render/timeline.ts`](../../src/lib/zine/render/timeline.ts)). Each effect is transform/opacity-only,
+   lazy-loaded, and reduced-motion-safe. NB: the curated set is achieved with native transforms driven by
+   one scroll-progress signal per scene — GSAP/Scrollama remain the path for the heavier `sidescroll`/pin
+   ("Scene moves") effects, which land with increment 5._ See
+   [docs/adding-an-effect.md](../adding-an-effect.md).
+5. ⏳ **Ambient "magic"** (Threlte/Pixi particles) and **Data** scenes (beats + states) — heavy,
    lazy-loaded effects, last.
 
 ---

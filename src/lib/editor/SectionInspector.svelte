@@ -1,17 +1,30 @@
 <script lang="ts">
 	import type { EditorStore } from './store.svelte';
-	import { SCENE_TYPES, type Scene, type SceneType } from '$lib/zine/schema/document';
+	import BackgroundPicker from './BackgroundPicker.svelte';
+	import {
+		SCENE_TYPES,
+		sceneScrollScreens,
+		type Scene,
+		type SceneType
+	} from '$lib/zine/schema/document';
 
 	let { store, section }: { store: EditorStore; section: Scene } = $props();
+
+	const screens = $derived(sceneScrollScreens(section));
+	const axis = $derived(section.scrollAxis ?? 'vertical');
 
 	const typeLabels: Record<SceneType, string> = {
 		page: 'Page (just writing)',
 		feature: 'Feature (big picture)',
-		reveal: 'Reveal (Step 4 timeline)',
-		parallax: 'Parallax (Step 4 timeline)',
-		sidescroll: 'Side-scroll (Step 4 timeline)',
-		data: 'Data (Step 5)'
+		reveal: 'Reveal',
+		parallax: 'Parallax',
+		sidescroll: 'Side-scroll',
+		data: 'Data'
 	};
+
+	function deleteScene(): void {
+		if (confirm('Delete this scene?')) store.removeScene(section.id);
+	}
 </script>
 
 <div class="space-y-4">
@@ -41,6 +54,59 @@
 		</select>
 	</label>
 
+	{#if section.type !== 'page'}
+		<div class="block" role="group" aria-label="Scroll direction">
+			<span class="text-sm font-medium text-foreground">Scroll direction</span>
+			<div class="mt-1 flex gap-1">
+				<button
+					type="button"
+					aria-pressed={axis === 'vertical'}
+					onclick={() => store.setSceneScrollAxis(section.id, 'vertical')}
+					class="flex-1 rounded-md border border-border px-2 py-1.5 text-sm text-foreground hover:bg-muted aria-pressed:border-primary aria-pressed:bg-muted"
+				>
+					↓ Down
+				</button>
+				<button
+					type="button"
+					aria-pressed={axis === 'horizontal'}
+					onclick={() => store.setSceneScrollAxis(section.id, 'horizontal')}
+					class="flex-1 rounded-md border border-border px-2 py-1.5 text-sm text-foreground hover:bg-muted aria-pressed:border-primary aria-pressed:bg-muted"
+				>
+					→ Sideways
+				</button>
+			</div>
+			<span class="mt-1 block text-xs text-muted-foreground">
+				Sideways turns this scene into a side-scroller — the page scrolls down while the scene pans
+				across.
+			</span>
+		</div>
+
+		<label class="block">
+			<span class="text-sm font-medium text-foreground">
+				Scroll length
+				<span class="text-muted-foreground">({screens} {screens === 1 ? 'screen' : 'screens'})</span
+				>
+			</span>
+			<input
+				type="range"
+				aria-label="Scroll length in screens"
+				min="1"
+				max="12"
+				step="1"
+				value={screens}
+				oninput={(e) => store.setSceneScroll(section.id, Number(e.currentTarget.value))}
+				class="mt-2 w-full accent-primary"
+			/>
+			<span class="mt-1 block text-xs text-muted-foreground">
+				How far the reader scrolls through this scene while its effects play out.
+			</span>
+		</label>
+	{/if}
+
+	<div class="border-t border-border pt-3">
+		<BackgroundPicker {store} {section} />
+	</div>
+
 	<div class="flex gap-2">
 		<button
 			type="button"
@@ -60,7 +126,7 @@
 
 	<button
 		type="button"
-		onclick={() => store.removeScene(section.id)}
+		onclick={deleteScene}
 		class="text-sm font-medium text-red-700 hover:underline"
 	>
 		Delete this scene

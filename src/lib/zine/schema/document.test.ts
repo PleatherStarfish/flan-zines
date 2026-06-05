@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DocumentError, parseDocument, publishBlockers, safeParseDocument } from './migrate';
+import { sceneScrollScreens } from './document';
 import { sampleZineRaw } from '../fixtures';
 
 const wrap = (block: unknown) => ({
@@ -146,5 +147,138 @@ describe('document schema', () => {
 
 	it('throws DocumentError for non-object input', () => {
 		expect(() => parseDocument(42)).toThrow(DocumentError);
+	});
+
+	it('accepts an explicit per-scene scrollLength and resolves scroll distance', () => {
+		const doc = parseDocument({
+			schemaVersion: 3,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'reveal',
+							length: 'auto',
+							scrollLength: 6,
+							beats: [{ id: 'beat', at: 0 }],
+							elements: []
+						}
+					]
+				}
+			]
+		});
+		const scene = doc.acts[0].scenes[0];
+		expect(scene.scrollLength).toBe(6);
+		expect(sceneScrollScreens(scene)).toBe(6);
+		// Page scenes always flow in one screen; timeline scenes fall back to a preset.
+		expect(sceneScrollScreens({ type: 'page', length: 'long' })).toBe(1);
+		expect(sceneScrollScreens({ type: 'reveal', length: 'long' })).toBe(6);
+		expect(sceneScrollScreens({ type: 'reveal', length: 'auto' })).toBe(2);
+	});
+
+	it('accepts a scene scrollAxis and rejects an unknown one', () => {
+		const make = (axis: string) =>
+			safeParseDocument({
+				schemaVersion: 3,
+				acts: [
+					{
+						id: 'act',
+						scenes: [
+							{
+								id: 'scn',
+								type: 'reveal',
+								length: 'auto',
+								scrollAxis: axis,
+								beats: [{ id: 'b', at: 0 }],
+								elements: []
+							}
+						]
+					}
+				]
+			});
+		const ok = make('horizontal');
+		expect(ok.ok).toBe(true);
+		if (ok.ok) expect(ok.document.acts[0].scenes[0].scrollAxis).toBe('horizontal');
+		expect(make('diagonal').ok).toBe(false);
+	});
+
+	it('validates scene background fills (media URLs + registry-backed canvas presets)', () => {
+		const withBg = (background: unknown) =>
+			safeParseDocument({
+				schemaVersion: 3,
+				acts: [
+					{
+						id: 'act',
+						scenes: [
+							{
+								id: 'scn',
+								type: 'feature',
+								length: 'auto',
+								background,
+								beats: [{ id: 'b', at: 0 }],
+								elements: []
+							}
+						]
+					}
+				]
+			});
+
+		// canvas preset → params validated + defaulted through the background registry.
+		const canvas = withBg({ fill: { kind: 'canvas', preset: 'drift-field' } });
+		expect(canvas.ok).toBe(true);
+		if (canvas.ok) {
+			expect(canvas.document.acts[0].scenes[0].background?.fill).toMatchObject({
+				kind: 'canvas',
+				preset: 'drift-field',
+				params: { density: 'medium', speed: 'slow', tint: 'ink' }
+			});
+		}
+
+		const unknown = withBg({ fill: { kind: 'canvas', preset: 'nope' } });
+		expect(unknown.ok).toBe(false);
+		if (!unknown.ok) expect(unknown.error.message).toMatch(/Unknown background/);
+
+		// bad canvas params → rejected.
+		expect(
+			withBg({ fill: { kind: 'canvas', preset: 'drift-field', params: { density: 'huge' } } }).ok
+		).toBe(false);
+
+		// image fill → safe URL + default fit.
+		const image = withBg({ fill: { kind: 'image', src: '/bg.svg' } });
+		expect(image.ok).toBe(true);
+		if (image.ok) {
+			expect(image.document.acts[0].scenes[0].background?.fill).toMatchObject({
+				kind: 'image',
+				src: '/bg.svg',
+				fit: 'cover'
+			});
+		}
+
+		// unsafe media URLs are rejected.
+		expect(withBg({ fill: { kind: 'image', src: 'javascript:alert(1)' } }).ok).toBe(false);
+		expect(withBg({ fill: { kind: 'video', src: 'https://example.com/clip.mp4' } }).ok).toBe(true);
+	});
+
+	it('rejects a scrollLength outside the supported range', () => {
+		const result = safeParseDocument({
+			schemaVersion: 3,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'reveal',
+							length: 'auto',
+							scrollLength: 99,
+							beats: [{ id: 'beat', at: 0 }],
+							elements: []
+						}
+					]
+				}
+			]
+		});
+		expect(result.ok).toBe(false);
 	});
 });

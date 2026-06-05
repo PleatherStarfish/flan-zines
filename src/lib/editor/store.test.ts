@@ -76,6 +76,84 @@ describe('EditorStore', () => {
 		expect(store.selectedBlock?.block.props).toEqual({ text: 'New', level: 3 });
 	});
 
+	it('adds a timeline clip at the requested scroll position', () => {
+		store = makeStore();
+		const id = store.addElementAt('scn_1', 'richText', 'content', 0.55)!;
+		expect(id).toBeTruthy();
+		expect(elements(store)[0]).toMatchObject({
+			id,
+			track: 'content',
+			range: { start: 0.55, end: 0.97 },
+			block: { type: 'richText' }
+		});
+		expect(store.selectedId).toBe(id);
+	});
+
+	it('keeps timeline ranges valid when clips are dragged past the edge', () => {
+		store = makeStore();
+		const id = store.addElement('scn_1', 'heading')!;
+		store.updateElementRange(id, { start: -0.2, end: 1.8 });
+		expect(elements(store)[0].range).toEqual({ start: 0, end: 1 });
+		store.updateElementRange(id, { start: 0.9, end: 0.2 });
+		expect(elements(store)[0].range).toEqual({ start: 0.9, end: 0.91 });
+	});
+
+	it('moves clips between timeline lanes and stores curated motion choices', () => {
+		store = makeStore();
+		const id = store.addElement('scn_1', 'heading')!;
+		store.updateElementTrack(id, 'background');
+		store.updateElementLegacyAnimation(id, { type: 'fade-up', trigger: 'scroll' });
+		expect(elements(store)[0]).toMatchObject({
+			track: 'background',
+			legacyAnimation: { type: 'fade-up', trigger: 'scroll' }
+		});
+		store.updateElementLegacyAnimation(id, undefined);
+		expect(elements(store)[0].legacyAnimation).toBeUndefined();
+	});
+
+	it('sets and clears registry effects on an element, surviving a reload round-trip', () => {
+		store = makeStore();
+		const id = store.addElement('scn_1', 'heading')!;
+		store.setElementEffect(id, 'enter', { type: 'rise', params: { speed: 'fast' } });
+		store.setElementEffect(id, 'motion', { type: 'parallax', params: {} });
+		expect(elements(store)[0].enter).toMatchObject({ type: 'rise' });
+
+		const reparsed = parseDocument(JSON.parse(JSON.stringify(store.doc)));
+		const reElement = reparsed.acts[0].scenes[0].elements[0];
+		expect(reElement.enter).toMatchObject({ type: 'rise', params: { speed: 'fast' } });
+		expect(reElement.motion?.type).toBe('parallax');
+
+		store.setElementEffect(id, 'enter', undefined);
+		expect(elements(store)[0].enter).toBeUndefined();
+	});
+
+	it('sets and clears a scene scroll length', () => {
+		const s = makeStore();
+		store = s;
+		const sceneId = s.addScene('act_1', 'reveal');
+		s.setSceneScroll(sceneId, 6);
+		const scene = () => s.doc.acts[0].scenes.find((scn) => scn.id === sceneId)!;
+		expect(scene().scrollLength).toBe(6);
+		s.setSceneScroll(sceneId, 3.4); // snapped to whole screens
+		expect(scene().scrollLength).toBe(3);
+		s.setSceneScroll(sceneId, undefined);
+		expect(scene().scrollLength).toBeUndefined();
+	});
+
+	it('switches a scene between vertical and side-scroll', () => {
+		const s = makeStore();
+		store = s;
+		// A sidescroll scene is born horizontal.
+		const sideId = s.addScene('act_1', 'sidescroll');
+		const scene = (id: string) => s.doc.acts[0].scenes.find((x) => x.id === id)!;
+		expect(scene(sideId).scrollAxis).toBe('horizontal');
+		// Vertical is stored as absence of the field.
+		s.setSceneScrollAxis(sideId, 'vertical');
+		expect(scene(sideId).scrollAxis).toBeUndefined();
+		s.setSceneScrollAxis(sideId, 'horizontal');
+		expect(scene(sideId).scrollAxis).toBe('horizontal');
+	});
+
 	it('adds scenes and reorders them', () => {
 		store = makeStore();
 		const s2 = store.addScene('act_1', 'feature');
@@ -83,6 +161,30 @@ describe('EditorStore', () => {
 		store.moveScene(s2, 'up');
 		expect(store.doc.acts[0].scenes.map((scene) => scene.id)).toEqual([s2, 'scn_1']);
 		expect(store.doc.acts[0].scenes[0].type).toBe('feature');
+	});
+
+	it('adds starter scenes in one undoable mutation', () => {
+		store = makeStore();
+		const sceneId = store.addStarterScene('act_1', 'page');
+		const scene = store.doc.acts[0].scenes.find((candidate) => candidate.id === sceneId);
+		expect(scene?.elements.map((element) => element.block.type)).toEqual(['heading', 'richText']);
+		expect(scene?.elements[0].range).toEqual({ start: 0, end: 1 });
+		store.undo();
+		expect(store.doc.acts[0].scenes.find((candidate) => candidate.id === sceneId)).toBeUndefined();
+	});
+
+	it('moves a scene before another scene by id', () => {
+		store = makeStore();
+		const s2 = store.addScene('act_1', 'feature');
+		const s3 = store.addScene('act_1', 'reveal');
+		store.moveSceneBefore(s3, 'scn_1');
+		expect(store.doc.acts[0].scenes.map((scene) => scene.id)).toEqual([s3, 'scn_1', s2]);
+	});
+
+	it('does not drop a scene when moving to a missing chapter', () => {
+		store = makeStore();
+		store.moveSceneToActEnd('scn_1', 'missing');
+		expect(store.doc.acts[0].scenes.map((scene) => scene.id)).toEqual(['scn_1']);
 	});
 
 	it('adds, updates, orders, and removes beats', () => {

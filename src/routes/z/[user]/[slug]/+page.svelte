@@ -11,7 +11,7 @@
 </svelte:head>
 
 <div class="zine-page">
-	<ZineRenderer document={data.document} title={data.title} />
+	<ZineRenderer document={data.document} title={data.title} drive />
 	<footer class="zine-byline">
 		<p>By {data.author}</p>
 		<a href="/">← Back to the gallery</a>

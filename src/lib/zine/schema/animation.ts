@@ -1,4 +1,15 @@
 import { z } from 'zod';
+import { effectIds, getEffect } from '../animations/registry';
+
+// Re-export the effect registry's contract types so the editor + schema share one
+// import surface for animation concerns.
+export type {
+	AnimationDef,
+	AnyAnimationDef,
+	EffectGroup,
+	EffectSlot,
+	KnobMeta
+} from '../animations/contract';
 
 // A declarative animation descriptor on a block or section. The full per-preset
 // validation (unknown type / unsupported trigger / invalid params rejected) lives in
@@ -26,18 +37,39 @@ export const AnimationDescriptorSchema = z
 export type AnimationDescriptor = z.infer<typeof AnimationDescriptorSchema>;
 
 // v3 scene-timeline effects are references resolved through the AnimationDef registry
-// (scene-timeline.md §5). The full registry lands in Increment 4; until then the
-// registry is intentionally empty, so effect references validate only when absent.
-export const REGISTERED_EFFECT_IDS = [] as const;
-export type EffectId = (typeof REGISTERED_EFFECT_IDS)[number];
+// (scene-timeline.md §5). Like BlockSchema, the ref is parsed THROUGH the registry: an
+// unknown effect type, or params that fail that effect's own schema, are rejected with
+// path-aware errors, and the normalized/defaulted params are returned. The registry is
+// the single source of truth for which effects exist and what they accept.
+export type EffectId = string;
 
-export const EffectRefSchema = z.object({
-	type: z
-		.string()
-		.min(1)
-		.refine((type) => (REGISTERED_EFFECT_IDS as readonly string[]).includes(type), {
-			message: 'Unknown effect type.'
-		}),
-	params: z.record(z.string(), z.unknown()).optional()
-});
+/** The currently registered effect ids (for tests, inspectors, and migrations). */
+export function registeredEffectIds(): string[] {
+	return effectIds();
+}
+
+export const EffectRefSchema = z
+	.object({
+		type: z.string().min(1),
+		params: z.record(z.string(), z.unknown()).optional()
+	})
+	.transform((ref, ctx) => {
+		const def = getEffect(ref.type);
+		if (!def) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['type'],
+				message: `Unknown effect type: "${ref.type}".`
+			});
+			return z.NEVER;
+		}
+		const result = def.schema.safeParse(ref.params ?? {});
+		if (!result.success) {
+			for (const issue of result.error.issues) {
+				ctx.addIssue({ code: 'custom', path: ['params', ...issue.path], message: issue.message });
+			}
+			return z.NEVER;
+		}
+		return { type: ref.type, params: result.data as Record<string, unknown> };
+	});
 export type EffectRef = z.infer<typeof EffectRefSchema>;

@@ -18,7 +18,7 @@
 		"test": "svelte-kit sync && vitest run",
 		"test:watch": "vitest",
 		"test:e2e": "playwright test",
-		"storybook": "storybook dev -p 6006",
+		"storybook": "storybook dev -p 38410",
 		"build-storybook": "storybook build"
 	},
 	"dependencies": {

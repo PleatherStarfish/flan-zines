@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { getBlock } from '../registry';
+import { getBackground } from '../backgrounds/registry';
 import { AnimationDescriptorSchema, EffectRefSchema } from './animation';
 import { BlockStyleSchema, SectionPresentationSchema, ThemeSchema } from './theme';
 import { HexColorSchema } from './theme';
+import { SafeUrlSchema } from './url';
 
 // The document IS the contract. v3 follows scene-timeline.md §2:
 // Story → Act → Scene → Beat → Element, where each Element wraps a registry block.
@@ -59,6 +61,15 @@ export const SCENE_LENGTHS = ['auto', 'short', 'medium', 'long'] as const;
 export const SceneLengthSchema = z.enum(SCENE_LENGTHS);
 export type SceneLength = z.infer<typeof SceneLengthSchema>;
 
+// The axis a scene scrolls along (scene-timeline.md §3). `vertical` is the default —
+// the reader scrolls down and effects play on the vertical axis. `horizontal` turns the
+// scene into a side-scroller: the reader still scrolls down, but the scene is pinned and
+// its stage pans sideways, so elements laid along the track come into view left-to-right
+// (a platformer "level"). Either axis still allows effects entering from any side.
+export const SCENE_AXES = ['vertical', 'horizontal'] as const;
+export const SceneAxisSchema = z.enum(SCENE_AXES);
+export type SceneAxis = z.infer<typeof SceneAxisSchema>;
+
 export const ELEMENT_TRACKS = ['content', 'media', 'background'] as const;
 export const ElementTrackSchema = z.enum(ELEMENT_TRACKS);
 export type ElementTrack = z.infer<typeof ElementTrackSchema>;
@@ -93,23 +104,84 @@ const ScenePresentationSchema = SectionPresentationSchema.extend({
 });
 export type ScenePresentation = z.infer<typeof ScenePresentationSchema>;
 
+// A scene's background layer: a flat tint plus an optional media/canvas FILL and a scrim
+// overlay for text legibility. `image` covers stills and GIFs; `canvas` references a
+// curated, registry-validated background preset (P5/Three/D3/Canvas2D). `src` is an
+// http(s)/relative URL only; durable asset upload is the Step-5 pipeline (data-model §8).
+export const BACKGROUND_FITS = ['cover', 'contain'] as const;
+const BackgroundFitSchema = z.enum(BACKGROUND_FITS);
+const FocalPointSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) });
+
+const ImageFillSchema = z.object({
+	kind: z.literal('image'),
+	src: SafeUrlSchema.optional(),
+	assetId: z.string().optional(),
+	fit: BackgroundFitSchema.default('cover'),
+	focalPoint: FocalPointSchema.optional(),
+	poster: SafeUrlSchema.optional(), // shown under reduced motion (a GIF can't be paused)
+	alt: z.string().optional()
+});
+const VideoFillSchema = z.object({
+	kind: z.literal('video'),
+	src: SafeUrlSchema.optional(),
+	assetId: z.string().optional(),
+	fit: BackgroundFitSchema.default('cover'),
+	poster: SafeUrlSchema.optional(),
+	loop: z.boolean().default(true)
+});
+const CanvasFillSchema = z.object({
+	kind: z.literal('canvas'),
+	preset: z.string().min(1),
+	params: z.record(z.string(), z.unknown()).optional()
+});
+export const BackgroundFillSchema = z.discriminatedUnion('kind', [
+	ImageFillSchema,
+	VideoFillSchema,
+	CanvasFillSchema
+]);
+export type BackgroundFill = z.infer<typeof BackgroundFillSchema>;
+
+const BackgroundOverlaySchema = z.object({
+	color: HexColorSchema.optional(),
+	opacity: z.number().min(0).max(1).default(0.35)
+});
+
 const SceneBackgroundSchema = z
 	.object({
 		color: HexColorSchema.optional(),
-		effect: z.string().optional(),
-		params: z.record(z.string(), z.unknown()).optional()
+		fill: BackgroundFillSchema.optional(),
+		overlay: BackgroundOverlaySchema.optional()
 	})
-	.superRefine((background, ctx) => {
-		if (!background.effect) return;
-		const result = EffectRefSchema.safeParse({
-			type: background.effect,
-			params: background.params
-		});
-		if (!result.success) {
-			for (const issue of result.error.issues) {
-				ctx.addIssue({ code: 'custom', path: ['effect', ...issue.path], message: issue.message });
+	.transform((background, ctx) => {
+		// Validate a canvas fill THROUGH the background registry (like blocks/effects):
+		// unknown preset or invalid params → path-aware error, params defaulted.
+		if (background.fill?.kind === 'canvas') {
+			const def = getBackground(background.fill.preset);
+			if (!def) {
+				ctx.addIssue({
+					code: 'custom',
+					path: ['fill', 'preset'],
+					message: `Unknown background: "${background.fill.preset}".`
+				});
+				return z.NEVER;
 			}
+			const result = def.schema.safeParse(background.fill.params ?? {});
+			if (!result.success) {
+				for (const issue of result.error.issues) {
+					ctx.addIssue({
+						code: 'custom',
+						path: ['fill', 'params', ...issue.path],
+						message: issue.message
+					});
+				}
+				return z.NEVER;
+			}
+			return {
+				...background,
+				fill: { ...background.fill, params: result.data as Record<string, unknown> }
+			};
 		}
+		return background;
 	});
 export type SceneBackground = z.infer<typeof SceneBackgroundSchema>;
 
@@ -132,6 +204,14 @@ export const SceneSchema = z
 		type: SceneTypeSchema,
 		label: z.string().optional(),
 		length: SceneLengthSchema.default('auto'),
+		// The axis the scene scrolls along; absent = vertical (back-compat). `horizontal`
+		// makes it a side-scroller (see SceneAxisSchema).
+		scrollAxis: SceneAxisSchema.optional(),
+		// Explicit scroll distance, in viewport-heights (vertical) or -widths (horizontal),
+		// that the scene's timeline is interpolated over (scene-timeline.md §3). Overrides the
+		// coarse `length` preset so authors can pace effects — e.g. "scroll 6 screens before
+		// the photo fades in".
+		scrollLength: z.number().min(1).max(20).optional(),
 		background: SceneBackgroundSchema.optional(),
 		presentation: ScenePresentationSchema.optional(),
 		beats: z.array(BeatSchema),
@@ -177,6 +257,25 @@ export const SceneSchema = z
 		});
 	});
 export type Scene = z.infer<typeof SceneSchema>;
+
+// Default scroll distance (in viewport-heights) per coarse `length` preset, when no
+// explicit `scrollLength` is set.
+const LENGTH_SCREENS: Record<SceneLength, number> = {
+	auto: 2,
+	short: 1,
+	medium: 3,
+	long: 6
+};
+
+/**
+ * Resolved scroll distance, in viewport-heights, that a scene's timeline interpolates
+ * over. Page scenes flow naturally (1 screen); timeline scenes use an explicit
+ * `scrollLength` if set, else a sensible default for their `length` preset.
+ */
+export function sceneScrollScreens(scene: Pick<Scene, 'type' | 'length' | 'scrollLength'>): number {
+	if (scene.type === 'page') return 1;
+	return scene.scrollLength ?? LENGTH_SCREENS[scene.length];
+}
 
 export const ActSchema = z.object({
 	id: z.string().min(1),

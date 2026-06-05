@@ -15,12 +15,16 @@
 		label,
 		style,
 		animation,
+		timelineStyle,
+		timelineActive,
 		children
 	}: {
 		blockId?: string;
 		label?: string;
 		style?: BlockStyle;
 		animation?: AnimationDescriptor;
+		timelineStyle?: string;
+		timelineActive?: boolean;
 		children: Snippet;
 	} = $props();
 
@@ -41,12 +45,24 @@
 				decoration().select(blockId);
 			}}
 		></button>
-		<div class="zine-block" data-align={style?.align} data-animation={animation?.type}>
+		<div
+			class="zine-block"
+			class:is-timeline-active={timelineActive}
+			data-align={style?.align}
+			data-animation={animation?.type}
+			style={timelineStyle}
+		>
 			{@render children()}
 		</div>
 	</div>
 {:else}
-	<div class="zine-block" data-align={style?.align} data-animation={animation?.type}>
+	<div
+		class="zine-block"
+		class:is-timeline-active={timelineActive}
+		data-align={style?.align}
+		data-animation={animation?.type}
+		style={timelineStyle}
+	>
 		{@render children()}
 	</div>
 {/if}

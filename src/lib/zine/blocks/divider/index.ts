@@ -9,7 +9,7 @@ export const dividerBlock: BlockDef<DividerProps> = {
 	category: 'structure',
 	schema: DividerPropsSchema,
 	defaults: {},
-	allowedAnimations: ['fade-up'],
+	allowedAnimations: ['fade'],
 	Render,
 	Inspector
 };

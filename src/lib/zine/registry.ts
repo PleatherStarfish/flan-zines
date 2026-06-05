@@ -2,7 +2,6 @@
 // §2). The document schema, validator, and renderer read ONLY from here; nothing in
 // the core hard-codes a block list. Adding a block = a new module + one registration
 // line below.
-import type { AnimationType } from './schema/types';
 import type { AnyBlockDef, BlockDef } from './schema/block';
 import { headingBlock } from './blocks/heading';
 import { richTextBlock } from './blocks/richText';
@@ -41,6 +40,21 @@ registerBlock(linkButtonBlock);
 registerBlock(dividerBlock);
 registerBlock(spacerBlock);
 
-// The animation registry is populated in Step 4; kept here as the second extension
-// point so its consumers have a stable import path.
-export const animationRegistry = new Map<AnimationType, unknown>();
+// The animation (effect) registry is the second extension point. It lives in
+// ./animations/registry so each effect can co-locate its schema + lazy impl; re-exported
+// here so registry.ts stays the one place the core discovers BOTH registries.
+export {
+	allEffects,
+	effectIds,
+	effectsForSlot,
+	getEffect,
+	registerEffect
+} from './animations/registry';
+
+// The background registry is the third extension point (scene canvas/media backgrounds).
+export {
+	allBackgrounds,
+	backgroundIds,
+	getBackground,
+	registerBackground
+} from './backgrounds/registry';

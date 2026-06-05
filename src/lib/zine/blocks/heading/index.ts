@@ -9,7 +9,7 @@ export const headingBlock: BlockDef<HeadingProps> = {
 	category: 'text',
 	schema: HeadingPropsSchema,
 	defaults: { text: 'Section heading', level: 2 },
-	allowedAnimations: ['fade-up'],
+	allowedAnimations: ['fade', 'rise', 'slide', 'pop', 'fly-in'],
 	Render,
 	Inspector
 };
