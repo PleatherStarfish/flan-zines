@@ -3,15 +3,32 @@
 @tailwind utilities;
 
 /* Theme tokens as data (HSL channels). A theme = a set of these variables, so the
-   theme picker in a later step swaps them without touching component code. */
+   theme picker in a later step swaps them without touching component code.
+   The app chrome uses a "Pixel Press" theme: photocopied paper, inky outlines,
+   and small arcade accents. The authored zine renderer still owns its own theme. */
 :root {
-	--background: 0 0% 100%;
-	--foreground: 222 47% 11%;
-	--muted: 210 40% 96%;
-	--muted-foreground: 215 16% 47%;
-	--primary: 12 76% 53%;
-	--primary-foreground: 0 0% 100%;
-	--border: 214 32% 91%;
+	--background: 42 54% 91%;
+	--foreground: 246 32% 18%;
+	--muted: 39 49% 83%;
+	--muted-foreground: 246 18% 39%;
+	--primary: 325 70% 45%;
+	--primary-foreground: 42 60% 94%;
+	--border: 246 30% 24%;
+	--input: 246 30% 24%;
+	--ring: 176 66% 36%;
+	--destructive: 6 71% 44%;
+	--destructive-foreground: 42 60% 94%;
+	--pixel-paper: oklch(0.92 0.035 84);
+	--pixel-paper-deep: oklch(0.84 0.047 76);
+	--pixel-ink: oklch(0.24 0.065 281);
+	--pixel-ink-soft: oklch(0.42 0.045 281);
+	--pixel-magenta: oklch(0.55 0.19 339);
+	--pixel-green: oklch(0.68 0.16 151);
+	--pixel-cyan: oklch(0.67 0.15 200);
+	--pixel-yellow: oklch(0.82 0.16 86);
+	--pixel-shadow: 0.34rem 0.34rem 0 var(--pixel-ink);
+	--pixel-shadow-sm: 0.18rem 0.18rem 0 var(--pixel-ink);
+	--pixel-radius: 0.18rem;
 }
 
 /* Apply the theme tokens to the page canvas so the background/text are explicit
@@ -20,6 +37,169 @@
 	html {
 		background-color: hsl(var(--background));
 		color: hsl(var(--foreground));
+	}
+	body {
+		min-height: 100vh;
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px),
+			linear-gradient(oklch(0.24 0.065 281 / 0.04) 1px, transparent 1px),
+			radial-gradient(circle at 1px 1px, oklch(0.24 0.065 281 / 0.14) 1px, transparent 0),
+			var(--pixel-paper);
+		background-size:
+			28px 28px,
+			28px 28px,
+			7px 7px,
+			auto;
+		color: hsl(var(--foreground));
+		font-family:
+			ui-sans-serif,
+			system-ui,
+			-apple-system,
+			BlinkMacSystemFont,
+			'Segoe UI',
+			sans-serif;
+	}
+	button,
+	input,
+	select,
+	textarea {
+		font: inherit;
+	}
+	::selection {
+		background: var(--pixel-yellow);
+		color: var(--pixel-ink);
+	}
+	:focus-visible {
+		outline: 3px solid var(--pixel-cyan);
+		outline-offset: 2px;
+	}
+	button {
+		transition:
+			transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+			box-shadow 160ms cubic-bezier(0.22, 1, 0.36, 1),
+			background-color 160ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+	button:not(:disabled):active {
+		transform: translate(2px, 2px);
+	}
+	button:disabled {
+		cursor: not-allowed;
+	}
+	input,
+	select,
+	textarea {
+		border-color: hsl(var(--input));
+	}
+}
+
+@layer components {
+	.pixel-shell {
+		min-height: 100vh;
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.055) 1px, transparent 1px),
+			linear-gradient(oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px), var(--pixel-paper);
+		background-size: 32px 32px;
+		color: hsl(var(--foreground));
+	}
+	.pixel-panel {
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background:
+			linear-gradient(135deg, oklch(0.98 0.018 82 / 0.92), oklch(0.88 0.038 78 / 0.92)),
+			var(--pixel-paper);
+		box-shadow: var(--pixel-shadow);
+	}
+	.pixel-panel-soft {
+		border: 2px solid oklch(0.24 0.065 281 / 0.55);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.94 0.032 83 / 0.82);
+		box-shadow: var(--pixel-shadow-sm);
+	}
+	.pixel-button {
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		box-shadow: 0.16rem 0.16rem 0 var(--pixel-ink);
+		color: var(--pixel-ink);
+		font-weight: 800;
+	}
+	.pixel-button:hover {
+		background: var(--pixel-yellow);
+	}
+	.pixel-button:disabled {
+		box-shadow: none;
+		opacity: 0.48;
+	}
+	.pixel-button--primary {
+		background: var(--pixel-magenta);
+		color: hsl(var(--primary-foreground));
+	}
+	.pixel-button--primary:hover {
+		background: var(--pixel-green);
+		color: var(--pixel-ink);
+	}
+	.pixel-button--dark {
+		background: var(--pixel-ink);
+		color: hsl(var(--primary-foreground));
+	}
+	.pixel-button--dark:hover {
+		background: var(--pixel-cyan);
+		color: var(--pixel-ink);
+	}
+	.pixel-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-yellow);
+		padding: 0.12rem 0.42rem;
+		box-shadow: 0.11rem 0.11rem 0 var(--pixel-ink);
+		color: var(--pixel-ink);
+		font-size: 0.72rem;
+		font-weight: 850;
+		text-transform: uppercase;
+	}
+	.pixel-input {
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.97 0.02 82);
+		box-shadow: inset 0.12rem 0.12rem 0 oklch(0.24 0.065 281 / 0.12);
+		color: var(--pixel-ink);
+	}
+	.pixel-input:focus {
+		border-color: var(--pixel-cyan);
+		outline: none;
+		box-shadow:
+			inset 0.12rem 0.12rem 0 oklch(0.24 0.065 281 / 0.12),
+			0 0 0 3px oklch(0.67 0.15 200 / 0.28);
+	}
+	.pixel-link {
+		color: var(--pixel-ink);
+		font-weight: 800;
+		text-decoration: underline;
+		text-decoration-color: var(--pixel-magenta);
+		text-decoration-thickness: 0.15rem;
+		text-underline-offset: 0.22rem;
+	}
+	.pixel-link:hover {
+		color: hsl(var(--primary));
+	}
+	.pixel-kicker {
+		color: hsl(var(--muted-foreground));
+		font-size: 0.72rem;
+		font-weight: 900;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+	.pixel-title {
+		color: var(--pixel-ink);
+		font-weight: 900;
+		letter-spacing: 0;
+		text-shadow: 0.12rem 0.12rem 0 var(--pixel-yellow);
+	}
+	.pixel-danger {
+		color: hsl(var(--destructive));
 	}
 }
 

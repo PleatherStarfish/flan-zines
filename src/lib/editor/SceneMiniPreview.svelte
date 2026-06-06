@@ -22,7 +22,7 @@
 	.scene-mini-preview {
 		height: 8rem;
 		overflow: hidden;
-		border-bottom: 1px solid hsl(var(--border));
+		border-bottom: 2px solid var(--pixel-ink);
 		background: var(--zine-bg, hsl(var(--background)));
 	}
 	.scene-mini-preview__scale {

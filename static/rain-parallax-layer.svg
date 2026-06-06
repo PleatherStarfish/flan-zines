@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" role="img" aria-label="Distant slanted rain streaks">
+	<g stroke="#f7ffff" stroke-linecap="round" opacity="0.82">
+		<path d="M48 24 L18 92" stroke-width="10" />
+		<path d="M128 10 L86 122" stroke-width="7" opacity="0.66" />
+		<path d="M226 38 L185 146" stroke-width="9" />
+		<path d="M318 4 L270 132" stroke-width="6" opacity="0.58" />
+		<path d="M438 22 L391 154" stroke-width="11" opacity="0.75" />
+		<path d="M548 0 L504 112" stroke-width="7" />
+		<path d="M642 44 L600 162" stroke-width="10" opacity="0.72" />
+		<path d="M744 18 L696 138" stroke-width="8" />
+		<path d="M846 30 L802 158" stroke-width="11" opacity="0.78" />
+	</g>
+	<g fill="#2cc8ff" opacity="0.42">
+		<circle cx="82" cy="172" r="12" />
+		<circle cx="354" cy="202" r="8" />
+		<circle cx="520" cy="182" r="11" />
+		<circle cx="790" cy="210" r="9" />
+	</g>
+</svg>

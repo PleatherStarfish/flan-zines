@@ -127,6 +127,39 @@ describe('EditorStore', () => {
 		expect(elements(store)[0].enter).toBeUndefined();
 	});
 
+	it('sets only schema-valid path choreography', () => {
+		store = makeStore();
+		const id = store.addElement('scn_1', 'heading')!;
+		store.setElementPath(id, [
+			{ at: 0, x: 10, y: 60, scale: 1, rotate: 0, ease: 'smooth' },
+			{ at: 1, x: 90, y: 60, scale: 1, rotate: 0, ease: 'smooth' }
+		]);
+		expect(elements(store)[0]).toMatchObject({
+			placement: 'free',
+			motion: { type: 'path' }
+		});
+
+		const previous = JSON.stringify(elements(store)[0].motion);
+		store.setElementPath(
+			id,
+			Array.from({ length: 13 }, (_, i) => ({
+				at: i / 12,
+				x: i,
+				y: i,
+				scale: 1,
+				rotate: 0,
+				ease: 'smooth' as const
+			}))
+		);
+		expect(JSON.stringify(elements(store)[0].motion)).toBe(previous);
+
+		store.setElementPath(id, [
+			{ at: 0.5, x: 10, y: 60, scale: 1, rotate: 0, ease: 'smooth' },
+			{ at: 0.5, x: 90, y: 60, scale: 1, rotate: 0, ease: 'smooth' }
+		]);
+		expect(JSON.stringify(elements(store)[0].motion)).toBe(previous);
+	});
+
 	it('sets and clears a scene scroll length', () => {
 		const s = makeStore();
 		store = s;

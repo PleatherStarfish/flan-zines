@@ -9,13 +9,19 @@ const wrap = (block: unknown) => ({
 });
 
 describe('document schema', () => {
-	it('parses the sample fixture as the current v3 story model', () => {
+	it('parses the sample fixture as the current story model', () => {
 		const doc = parseDocument(sampleZineRaw);
 		expect(doc.schemaVersion).toBe(5);
 		expect(doc.acts).toHaveLength(1);
-		expect(doc.acts[0].scenes).toHaveLength(2);
+		expect(doc.acts[0].scenes).toHaveLength(6);
 		expect(doc.acts[0].scenes[0].type).toBe('page');
 		expect(doc.acts[0].scenes[0].presentation?.legacyLayout).toBe('centered');
+		const sideScroll = doc.acts[0].scenes.find((scene) => scene.type === 'sidescroll');
+		expect(sideScroll?.scrollAxis).toBe('horizontal');
+		const sprite = sideScroll?.elements.find(
+			(element) => element.placement === 'free' && element.motion?.type === 'path'
+		);
+		expect(sprite?.motion?.type).toBe('path');
 	});
 
 	it('returns registry-parsed block props, including defaults', () => {

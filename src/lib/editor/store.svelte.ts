@@ -15,7 +15,7 @@ import type {
 	SceneType,
 	ZineDocument
 } from '$lib/zine/schema/document';
-import type { Waypoint } from '$lib/zine/animations/path';
+import { PathParamsSchema, type Waypoint } from '$lib/zine/animations/path';
 import { parseDocument } from '$lib/zine/schema/migrate';
 import type { BlockStyle, SectionKind } from '$lib/zine/schema/theme';
 import type { Theme, ThemeColors, ThemeRole } from '$lib/zine/schema/theme';
@@ -457,11 +457,16 @@ export class EditorStore {
 	}
 	/** Make an element a free sprite that follows `waypoints` on scroll (the `path` motion). */
 	setElementPath(elementId: string, waypoints: Waypoint[]): void {
+		const parsed = PathParamsSchema.safeParse({ waypoints });
+		if (!parsed.success) return;
 		this.mutate((draft) => {
 			const element = findElement(draft, elementId)?.element;
 			if (!element) return;
 			element.placement = 'free';
-			element.motion = { type: 'path', params: { waypoints: structuredClone(waypoints) } };
+			element.motion = {
+				type: 'path',
+				params: { waypoints: structuredClone(parsed.data.waypoints) }
+			};
 		});
 	}
 	moveElement(elementId: string, dir: 'up' | 'down'): void {

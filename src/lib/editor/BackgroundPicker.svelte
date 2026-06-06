@@ -129,7 +129,7 @@
 
 	function setOverlay(opacity: number): void {
 		const next: SceneBackground = { ...(bg ?? {}) };
-		if (opacity > 0) next.overlay = { color: '#000000', opacity: Math.round(opacity * 100) / 100 };
+		if (opacity > 0) next.overlay = { color: '#241f33', opacity: Math.round(opacity * 100) / 100 };
 		else delete next.overlay;
 		commit(next);
 	}
@@ -140,14 +140,14 @@
 </script>
 
 <section class="bg-picker" aria-label="Scene background">
-	<h3>Background</h3>
-	<div class="kind-row">
-		{#each kinds as choice (choice.id)}
-			<button type="button" aria-pressed={kind === choice.id} onclick={() => chooseKind(choice.id)}>
-				{choice.label}
-			</button>
-		{/each}
-	</div>
+	<label class="field">
+		<span>Background type</span>
+		<select value={kind} onchange={(event) => chooseKind(event.currentTarget.value as typeof kind)}>
+			{#each kinds as choice (choice.id)}
+				<option value={choice.id}>{choice.label}</option>
+			{/each}
+		</select>
+	</label>
 
 	{#if fill?.kind === 'image' || fill?.kind === 'video'}
 		<label class="field">
@@ -186,83 +186,86 @@
 			</label>
 		{/if}
 	{:else if fill?.kind === 'canvas'}
-		<div class="preset-grid">
-			{#each presets as def (def.type)}
-				<button
-					type="button"
-					aria-pressed={fill.preset === def.type}
-					onclick={() => choosePreset(def.type)}
-				>
-					<span aria-hidden="true">{def.icon}</span>{def.label}
-				</button>
-			{/each}
-		</div>
+		<label class="field">
+			<span>Animated style</span>
+			<select value={fill.preset} onchange={(event) => choosePreset(event.currentTarget.value)}>
+				{#each presets as def (def.type)}
+					<option value={def.type}>{def.icon} {def.label}</option>
+				{/each}
+			</select>
+		</label>
 		{#if activeCanvasDef}
-			{#each activeCanvasDef.knobs as knob (knob.key)}
-				<div class="field">
-					<span>{knob.label}</span>
-					{#if knob.kind === 'theme-swatches'}
-						{#if swatches.length}
+			<details class="bg-picker__details">
+				<summary>Tweak animation</summary>
+				{#each activeCanvasDef.knobs as knob (knob.key)}
+					<div class="field">
+						<span>{knob.label}</span>
+						{#if knob.kind === 'theme-swatches'}
+							{#if swatches.length}
+								<div class="chip-row">
+									{#each swatches as sw, i (i)}
+										<button
+											type="button"
+											class="swatch-toggle"
+											aria-pressed={swatchSelected(knob.key, i)}
+											style:background={sw}
+											aria-label="Toggle {sw}"
+											onclick={() => toggleSwatch(knob.key, i, swatches.length)}
+										></button>
+									{/each}
+								</div>
+							{:else}
+								<p class="hint">Pick a colour theme to choose which colours appear.</p>
+							{/if}
+						{:else if knob.kind === 'multiselect'}
 							<div class="chip-row">
-								{#each swatches as sw, i (i)}
+								{#each knob.options as option (option.value)}
 									<button
 										type="button"
-										class="swatch-toggle"
-										aria-pressed={swatchSelected(knob.key, i)}
-										style:background={sw}
-										aria-label="Toggle {sw}"
-										onclick={() => toggleSwatch(knob.key, i, swatches.length)}
-									></button>
+										aria-pressed={(canvasKnobArray(knob.key) as string[]).includes(option.value)}
+										onclick={() => toggleOption(knob.key, option.value)}
+									>
+										{option.label}
+									</button>
 								{/each}
 							</div>
 						{:else}
-							<p class="hint">Pick a colour theme to choose which colours appear.</p>
+							<div class="chip-row">
+								{#each knob.options as option (option.value)}
+									<button
+										type="button"
+										aria-pressed={canvasKnobValue(knob.key) === option.value}
+										onclick={() => setCanvasKnob(knob.key, option.value)}
+									>
+										{option.label}
+									</button>
+								{/each}
+							</div>
 						{/if}
-					{:else if knob.kind === 'multiselect'}
-						<div class="chip-row">
-							{#each knob.options as option (option.value)}
-								<button
-									type="button"
-									aria-pressed={(canvasKnobArray(knob.key) as string[]).includes(option.value)}
-									onclick={() => toggleOption(knob.key, option.value)}
-								>
-									{option.label}
-								</button>
-							{/each}
-						</div>
-					{:else}
-						<div class="chip-row">
-							{#each knob.options as option (option.value)}
-								<button
-									type="button"
-									aria-pressed={canvasKnobValue(knob.key) === option.value}
-									onclick={() => setCanvasKnob(knob.key, option.value)}
-								>
-									{option.label}
-								</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			{/each}
+					</div>
+				{/each}
+			</details>
 		{/if}
 	{/if}
 
 	{#if fill}
-		<label class="field">
-			<span>Darken for text ({Math.round(overlayOpacity * 100)}%)</span>
-			<input
-				type="range"
-				min="0"
-				max="0.8"
-				step="0.05"
-				value={overlayOpacity}
-				oninput={(e) => setOverlay(Number(e.currentTarget.value))}
-			/>
-		</label>
-		<p class="hint">
-			Backgrounds are decorative — they pause and show a still frame for reduced motion.
-		</p>
+		<details class="bg-picker__details">
+			<summary>Make text readable</summary>
+			<label class="field">
+				<span>Darken behind text ({Math.round(overlayOpacity * 100)}%)</span>
+				<input
+					type="range"
+					min="0"
+					max="0.8"
+					step="0.05"
+					value={overlayOpacity}
+					oninput={(e) => setOverlay(Number(e.currentTarget.value))}
+				/>
+			</label>
+			<p class="hint">
+				Backgrounds are decorative. They pause and show a still frame for reduced motion.
+			</p>
+		</details>
 	{/if}
 </section>
 
@@ -271,43 +274,27 @@
 		display: grid;
 		gap: 0.6rem;
 	}
-	.bg-picker h3 {
-		margin: 0;
-		font-size: 0.78rem;
-		font-weight: 760;
-		color: hsl(var(--foreground));
-	}
-	.kind-row,
-	.chip-row,
-	.preset-grid {
+	.chip-row {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.3rem;
 	}
-	.preset-grid {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-	.kind-row button,
-	.chip-row button,
-	.preset-grid button {
+	.chip-row button {
 		flex: 1 1 auto;
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3rem;
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.4rem;
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		box-shadow: 0.1rem 0.1rem 0 var(--pixel-ink);
 		padding: 0.4rem 0.5rem;
 		font-size: 0.8rem;
-		font-weight: 700;
+		font-weight: 850;
 		color: hsl(var(--foreground));
 	}
-	.kind-row button[aria-pressed='true'],
-	.chip-row button[aria-pressed='true'],
-	.preset-grid button[aria-pressed='true'] {
-		border-color: hsl(var(--primary));
-		background: hsl(var(--muted));
+	.chip-row button[aria-pressed='true'] {
+		background: var(--pixel-cyan);
 	}
 	.field {
 		display: grid;
@@ -315,46 +302,71 @@
 	}
 	.field > span {
 		font-size: 0.74rem;
-		font-weight: 700;
+		font-weight: 850;
 		color: hsl(var(--muted-foreground));
 	}
+	.field select,
 	.field input[type='url'],
 	.field input[type='text'] {
 		width: 100%;
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.4rem;
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.97 0.02 82);
 		padding: 0.4rem 0.5rem;
-		font-size: 0.82rem;
 		color: hsl(var(--foreground));
+		font-size: 0.82rem;
+		font-weight: 780;
 	}
 	.field input[type='range'] {
 		width: 100%;
 		accent-color: hsl(var(--primary));
+	}
+	.bg-picker__details {
+		border: 2px solid oklch(0.24 0.065 281 / 0.34);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.985 0.015 82);
+		padding: 0.5rem 0.6rem;
+	}
+	.bg-picker__details summary {
+		cursor: pointer;
+		color: hsl(var(--foreground));
+		font-size: 0.78rem;
+		font-weight: 850;
+	}
+	.bg-picker__details[open] {
+		box-shadow: 0.1rem 0.1rem 0 oklch(0.24 0.065 281 / 0.26);
+	}
+	.bg-picker__details[open] summary {
+		margin-bottom: 0.55rem;
+	}
+	.bg-picker__details .field + .field {
+		margin-top: 0.55rem;
 	}
 	/* "Which colours participate" chips: a round swatch that dims when excluded. */
 	.swatch-toggle {
 		height: 1.5rem;
 		width: 1.5rem;
 		flex: 0 0 auto;
-		border-radius: 999px;
-		border: 1px solid hsl(var(--border));
+		border-radius: var(--pixel-radius);
+		border: 2px solid var(--pixel-ink);
 		opacity: 0.35;
 		cursor: pointer;
 	}
 	.swatch-toggle[aria-pressed='true'] {
 		opacity: 1;
-		outline: 2px solid hsl(var(--foreground));
-		outline-offset: 1px;
+		outline: 3px solid var(--pixel-yellow);
+		outline-offset: 2px;
 	}
 	.hint {
 		margin: 0;
 		font-size: 0.72rem;
 		color: hsl(var(--muted-foreground));
 	}
+	summary:focus-visible,
 	button:focus-visible,
-	input:focus-visible {
-		outline: 2px solid hsl(var(--primary));
+	input:focus-visible,
+	select:focus-visible {
+		outline: 3px solid var(--pixel-cyan);
 		outline-offset: 2px;
 	}
 </style>

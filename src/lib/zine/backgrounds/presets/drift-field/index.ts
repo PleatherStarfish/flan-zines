@@ -4,9 +4,9 @@ import { DriftFieldParamsSchema, type DriftFieldParams } from './schema';
 
 export const driftFieldBackground: BackgroundDef<DriftFieldParams> = {
 	type: 'drift-field',
-	label: 'Drifting dots',
+	label: 'Rain streaks',
 	engine: 'canvas2d',
-	icon: '✶',
+	icon: '╱',
 	schema: DriftFieldParamsSchema,
 	defaults: DriftFieldParamsSchema.parse({}),
 	knobs: [AMOUNT_KNOB, SPEED_KNOB, TINT_KNOB],

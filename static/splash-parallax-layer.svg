@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" role="img" aria-label="Foreground curb splashes and runoff ripples">
+	<path
+		d="M0 210 C72 176 120 238 190 202 C260 166 318 238 390 198 C472 154 532 232 604 196 C690 150 756 232 900 188 L900 260 L0 260 Z"
+		fill="#1068b9"
+		opacity="0.78"
+	/>
+	<path
+		d="M0 224 C80 194 125 236 190 216 C262 194 310 236 390 214 C478 190 532 232 604 212 C694 188 760 226 900 204"
+		fill="none"
+		stroke="#e8feff"
+		stroke-width="10"
+		stroke-linecap="round"
+		opacity="0.86"
+	/>
+	<g fill="#e8feff" opacity="0.82">
+		<circle cx="118" cy="150" r="10" />
+		<circle cx="150" cy="132" r="6" />
+		<circle cx="386" cy="146" r="12" />
+		<circle cx="430" cy="122" r="7" />
+		<circle cx="640" cy="136" r="9" />
+		<circle cx="706" cy="118" r="6" />
+	</g>
+	<g stroke="#8eeaff" stroke-linecap="round" opacity="0.7">
+		<path d="M78 192 C110 174 138 174 166 192" stroke-width="5" fill="none" />
+		<path d="M518 186 C558 164 594 166 626 188" stroke-width="5" fill="none" />
+		<path d="M744 178 C782 158 826 160 864 184" stroke-width="5" fill="none" />
+	</g>
+</svg>

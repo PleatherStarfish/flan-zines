@@ -165,9 +165,43 @@
 		);
 	}
 
+	function hexToRgb(hex: string): [number, number, number] | null {
+		const normalized = hex.trim();
+		const short = /^#([0-9a-f]{3})$/i.exec(normalized);
+		if (short) {
+			const [r, g, b] = [...short[1]].map((channel) => parseInt(channel + channel, 16));
+			return [r, g, b];
+		}
+		const long = /^#([0-9a-f]{6})$/i.exec(normalized);
+		if (!long) return null;
+		const value = parseInt(long[1], 16);
+		return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+	}
+
+	function relativeLuminance([r, g, b]: [number, number, number]): number {
+		const toLinear = (channel: number) => {
+			const value = channel / 255;
+			return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+		};
+		return toLinear(r) * 0.2126 + toLinear(g) * 0.7152 + toLinear(b) * 0.0722;
+	}
+
+	function isDarkBackground(color: string | undefined): boolean {
+		const rgb = color ? hexToRgb(color) : null;
+		return rgb ? relativeLuminance(rgb) < 0.22 : false;
+	}
+
 	function sceneSectionStyle(scene: Scene): string | undefined {
 		const parts: string[] = [];
-		if (scene.background?.color) parts.push(`background:${scene.background.color}`);
+		if (scene.background?.color) {
+			parts.push(`background:${scene.background.color}`);
+			if (isDarkBackground(scene.background.color)) {
+				parts.push('--zine-fg:#fff3c4');
+				parts.push('--zine-heading:#fff3c4');
+				parts.push('--zine-muted:#d8d2a6');
+				parts.push('--zine-accent:#5de7ff');
+			}
+		}
 		if (isPinned(scene)) {
 			// The scroll-range height uses `svh` (the *stable* small viewport) so a mobile
 			// navbar toggling doesn't resize the range and jump the scroll triggers
@@ -351,6 +385,7 @@
 	.zine-scene {
 		position: relative;
 		padding: 1.5rem 0;
+		color: var(--zine-fg);
 	}
 	/* Content sits above the background layer (SceneBackground is z-index 0). */
 	.zine-scene__inner {
@@ -424,6 +459,13 @@
 		top: 0;
 		pointer-events: auto;
 	}
+	.zine-free-actor[data-track='background'] {
+		z-index: 0;
+		pointer-events: none;
+	}
+	.zine-free-actor[data-track='media'] {
+		z-index: 1;
+	}
 	/* The block carries the path transform (inline, from the timeline). Its default — used when
 	   there's no motion, e.g. reduced-motion — centres the sprite on the stage. `- 50%` offsets
 	   by the sprite's own half-size so the waypoint is its CENTRE. */
@@ -438,6 +480,22 @@
 	.zine-free-actor :global(.zine-image),
 	.zine-free-actor :global(.zine-image img) {
 		max-height: 46cqh;
+		max-width: none;
+		width: max-content;
+	}
+	.zine-free-actor :global(.zine-image img) {
+		width: clamp(2.6rem, 5.5cqw, 5.8rem);
+		height: auto;
+	}
+	.zine-free-actor[data-track='background'] :global(.zine-block) {
+		max-width: min(88cqw, 62rem);
+	}
+	.zine-free-actor[data-track='background'] :global(.zine-image img) {
+		width: min(88cqw, 62rem);
+		max-height: 72cqh;
+		opacity: 0.86;
+	}
+	.zine-free-actor[data-track='background'] :global(.zine-image) {
 		width: auto;
 	}
 	:global(.zine .zine-block) {
@@ -474,6 +532,24 @@
 	:global(.zine .zine-richtext p) {
 		margin: 0 0 1.1rem;
 	}
+	:global(.zine .zine-richtext h2),
+	:global(.zine .zine-richtext h3),
+	:global(.zine .zine-richtext h4) {
+		margin: 1.35rem 0 0.65rem;
+		font-family: var(--zine-font-heading);
+		font-weight: 800;
+		line-height: 1.18;
+		color: var(--zine-heading, var(--zine-fg));
+	}
+	:global(.zine .zine-richtext h2) {
+		font-size: 1.45em;
+	}
+	:global(.zine .zine-richtext h3) {
+		font-size: 1.25em;
+	}
+	:global(.zine .zine-richtext h4) {
+		font-size: 1.08em;
+	}
 	:global(.zine .zine-richtext li > p) {
 		margin: 0;
 	}
@@ -490,6 +566,16 @@
 	}
 	:global(.zine .zine-richtext li) {
 		margin: 0.3rem 0;
+	}
+	:global(.zine .zine-richtext blockquote) {
+		margin: 0 0 1.1rem;
+		border: 2px solid color-mix(in oklch, var(--zine-accent), transparent 52%);
+		border-radius: 0.35rem;
+		background: color-mix(in oklch, var(--zine-accent), transparent 90%);
+		padding: 0.85rem 1rem;
+	}
+	:global(.zine .zine-richtext blockquote p:last-child) {
+		margin-bottom: 0;
 	}
 	:global(.zine .zine-richtext a),
 	:global(.zine .zine-link) {

@@ -13,43 +13,36 @@
 	};
 </script>
 
-<header
-	class="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-2"
->
-	<div class="flex items-center gap-3">
-		<a href="/app" class="text-sm text-muted-foreground hover:text-foreground">← My zines</a>
-		<span class="font-semibold text-foreground">{title}</span>
+<header class="toolbar">
+	<div class="toolbar__title">
+		<a href="/app" class="toolbar__back">My zines</a>
+		<span>{title}</span>
 	</div>
 
-	<div class="flex items-center gap-3">
-		<div class="flex overflow-hidden rounded-md border border-border text-sm">
+	<div class="toolbar__controls">
+		<div class="mode-switch" role="group" aria-label="Editor mode">
 			<button
 				type="button"
-				class="px-3 py-1.5 {store.mode === 'edit'
-					? 'bg-foreground text-background'
-					: 'text-foreground'}"
+				class:active={store.mode === 'edit'}
 				onclick={() => store.setMode('edit')}
 			>
 				Edit
 			</button>
 			<button
 				type="button"
-				class="px-3 py-1.5 {store.mode === 'preview'
-					? 'bg-foreground text-background'
-					: 'text-foreground'}"
+				class:active={store.mode === 'preview'}
 				onclick={() => store.setMode('preview')}
 			>
 				Preview
 			</button>
 		</div>
 
-		<div class="flex gap-1">
+		<div class="history-buttons">
 			<button
 				type="button"
 				aria-label="Undo"
 				disabled={!store.canUndo}
 				onclick={() => store.undo()}
-				class="rounded-md border border-border px-2 py-1 text-sm disabled:opacity-40"
 			>
 				↶
 			</button>
@@ -58,33 +51,27 @@
 				aria-label="Redo"
 				disabled={!store.canRedo}
 				onclick={() => store.redo()}
-				class="rounded-md border border-border px-2 py-1 text-sm disabled:opacity-40"
 			>
 				↷
 			</button>
 		</div>
 
-		<span class="min-w-28 text-right text-xs text-muted-foreground" data-testid="save-status">
+		<span class="save-status" data-testid="save-status">
 			{statusLabel[store.saveStatus] ?? ''}
 		</span>
 	</div>
 </header>
 
 {#if store.saveStatus === 'conflict'}
-	<section
-		class="border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-		role="alert"
-		aria-live="assertive"
-	>
-		<div class="flex flex-wrap items-center justify-between gap-3">
+	<section class="conflict-banner" role="alert" aria-live="assertive">
+		<div class="conflict-banner__row">
 			<div>
 				<p class="font-medium">Another save happened before this one finished.</p>
 				<p>Your local edits are preserved. Choose which copy to keep before autosave continues.</p>
 			</div>
-			<div class="flex flex-wrap gap-2">
+			<div class="conflict-banner__actions">
 				<button
 					type="button"
-					class="rounded-md border border-amber-700 px-3 py-1.5 font-medium hover:bg-amber-100"
 					onclick={() => {
 						store.discardLocalShadow();
 						location.reload();
@@ -92,16 +79,11 @@
 				>
 					Reload server copy
 				</button>
-				<button
-					type="button"
-					class="rounded-md bg-amber-900 px-3 py-1.5 font-medium text-white hover:opacity-90"
-					onclick={() => store.keepLocalAfterConflict()}
-				>
+				<button type="button" onclick={() => store.keepLocalAfterConflict()}>
 					Keep local copy
 				</button>
 				<button
 					type="button"
-					class="rounded-md border border-amber-700 px-3 py-1.5 font-medium hover:bg-amber-100"
 					aria-expanded={showConflictDetails}
 					onclick={() => (showConflictDetails = !showConflictDetails)}
 				>
@@ -110,7 +92,7 @@
 			</div>
 		</div>
 		{#if showConflictDetails}
-			<dl class="mt-3 grid gap-1 text-xs sm:grid-cols-2">
+			<dl class="conflict-banner__details">
 				<div>
 					<dt class="font-semibold">Local copy</dt>
 					<dd>
@@ -131,3 +113,127 @@
 		{/if}
 	</section>
 {/if}
+
+<style>
+	.toolbar {
+		z-index: 25;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.8rem;
+		border-bottom: 2px solid var(--pixel-ink);
+		background: var(--pixel-ink);
+		padding: 0.65rem 0.8rem;
+		color: hsl(var(--primary-foreground));
+	}
+	.toolbar__title,
+	.toolbar__controls {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.65rem;
+	}
+	.toolbar__back {
+		border: 2px solid hsl(var(--primary-foreground));
+		border-radius: var(--pixel-radius);
+		padding: 0.28rem 0.5rem;
+		color: hsl(var(--primary-foreground));
+		font-size: 0.8rem;
+		font-weight: 850;
+		text-decoration: none;
+	}
+	.toolbar__back:hover {
+		background: var(--pixel-yellow);
+		color: var(--pixel-ink);
+	}
+	.toolbar__title span {
+		font-weight: 900;
+	}
+	.mode-switch,
+	.history-buttons {
+		display: flex;
+		gap: 0.25rem;
+	}
+	.mode-switch button,
+	.history-buttons button,
+	.conflict-banner button {
+		border: 2px solid hsl(var(--primary-foreground));
+		border-radius: var(--pixel-radius);
+		background: transparent;
+		color: hsl(var(--primary-foreground));
+		font-size: 0.84rem;
+		font-weight: 850;
+	}
+	.mode-switch button {
+		padding: 0.35rem 0.65rem;
+	}
+	.mode-switch button.active {
+		background: var(--pixel-green);
+		color: var(--pixel-ink);
+	}
+	.history-buttons button {
+		min-width: 2rem;
+		padding: 0.3rem 0.45rem;
+	}
+	.history-buttons button:not(:disabled):hover,
+	.mode-switch button:not(.active):hover {
+		background: hsl(var(--primary-foreground) / 0.14);
+	}
+	.history-buttons button:disabled {
+		opacity: 0.42;
+	}
+	.save-status {
+		min-width: 8.5rem;
+		color: oklch(0.9 0.04 86);
+		font-size: 0.76rem;
+		font-weight: 800;
+		text-align: right;
+	}
+	.conflict-banner {
+		border-bottom: 2px solid var(--pixel-ink);
+		background: var(--pixel-yellow);
+		padding: 0.75rem 0.9rem;
+		color: var(--pixel-ink);
+		font-size: 0.9rem;
+	}
+	.conflict-banner p {
+		margin: 0;
+	}
+	.conflict-banner__row,
+	.conflict-banner__actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+	.conflict-banner__actions button {
+		border-color: var(--pixel-ink);
+		color: var(--pixel-ink);
+		padding: 0.4rem 0.65rem;
+	}
+	.conflict-banner__actions button:hover {
+		background: hsl(var(--primary-foreground) / 0.7);
+	}
+	.conflict-banner__details {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.5rem;
+		margin: 0.75rem 0 0;
+		font-size: 0.78rem;
+	}
+	@media (max-width: 720px) {
+		.toolbar,
+		.toolbar__controls {
+			align-items: stretch;
+			flex-direction: column;
+		}
+		.save-status {
+			text-align: left;
+		}
+		.conflict-banner__details {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

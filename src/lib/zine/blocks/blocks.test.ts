@@ -43,10 +43,25 @@ describe('core blocks', () => {
 					content: [
 						{ type: 'text', text: 'bold', marks: [{ type: 'bold' }] },
 						{ type: 'text', text: 'italic', marks: [{ type: 'italic' }] },
+						{ type: 'text', text: 'underline', marks: [{ type: 'underline' }] },
 						{
 							type: 'text',
 							text: 'link',
 							marks: [{ type: 'link', attrs: { href: 'https://example.com' } }]
+						}
+					]
+				},
+				{
+					type: 'heading',
+					attrs: { level: 2 },
+					content: [{ type: 'text', text: 'A field note' }]
+				},
+				{
+					type: 'blockquote',
+					content: [
+						{
+							type: 'paragraph',
+							content: [{ type: 'text', text: 'The drain answers in inches.' }]
 						}
 					]
 				}
@@ -55,6 +70,9 @@ describe('core blocks', () => {
 		const { container } = render(RichTextRender, { props: { props: { doc } } });
 		expect(container.querySelector('strong')?.textContent).toBe('bold');
 		expect(container.querySelector('em')?.textContent).toBe('italic');
+		expect(container.querySelector('u')?.textContent).toBe('underline');
+		expect(container.querySelector('h2')?.textContent).toBe('A field note');
+		expect(container.querySelector('blockquote')?.textContent).toContain('answers in inches');
 		const a = container.querySelector('a');
 		expect(a?.getAttribute('href')).toBe('https://example.com');
 		expect(a?.getAttribute('rel')).toBe('noopener noreferrer');

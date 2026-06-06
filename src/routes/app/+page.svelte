@@ -27,89 +27,214 @@
 	<title>My zines — Zine studio</title>
 </svelte:head>
 
-<div class="flex items-center justify-between">
-	<h1 class="text-2xl font-bold tracking-tight text-foreground">My zines</h1>
-	<button
-		type="button"
-		onclick={() => (creating = !creating)}
-		class="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90"
-	>
-		{creating ? 'Cancel' : 'New zine'}
-	</button>
-</div>
-
-{#if creating}
-	<form
-		method="POST"
-		action="?/create"
-		use:enhance
-		class="mt-6 space-y-4 rounded-lg border border-border bg-muted/40 p-5"
-	>
-		<label class="block">
-			<span class="text-sm font-medium text-foreground">Title</span>
-			<input
-				name="title"
-				type="text"
-				placeholder="My zine"
-				required
-				class="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-			/>
-		</label>
-		<fieldset>
-			<legend class="text-sm font-medium text-foreground">Start from</legend>
-			<div class="mt-2 grid gap-2 sm:grid-cols-2">
-				{#each ZINE_TEMPLATES as template, i (template.id)}
-					<label
-						class="flex cursor-pointer gap-2 rounded-md border border-border bg-background p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-muted"
-					>
-						<input
-							type="radio"
-							name="template"
-							value={template.id}
-							checked={i === 0}
-							class="mt-0.5"
-						/>
-						<span>
-							<span class="font-medium text-foreground">{template.label}</span>
-							<span class="block text-xs text-muted-foreground">{template.description}</span>
-						</span>
-					</label>
-				{/each}
-			</div>
-		</fieldset>
-		{#if form?.message}
-			<p role="alert" class="text-sm text-red-700">{form.message}</p>
-		{/if}
+<section class="zines-dashboard" aria-labelledby="zines-title">
+	<div class="zines-dashboard__head">
+		<div>
+			<p class="pixel-kicker">Studio shelf</p>
+			<h1 id="zines-title" class="pixel-title">My zines</h1>
+		</div>
 		<button
-			type="submit"
-			class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+			type="button"
+			onclick={() => (creating = !creating)}
+			class="pixel-button pixel-button--primary zines-dashboard__new"
 		>
-			Create &amp; open editor
+			{creating ? 'Cancel' : 'New zine'}
 		</button>
-	</form>
-{/if}
+	</div>
 
-{#if data.zines.length === 0}
-	<p class="mt-10 text-muted-foreground" data-testid="zines-empty">
-		You haven’t started a zine yet. Click <strong>New zine</strong> to begin.
-	</p>
-{:else}
-	<ul class="mt-8 divide-y divide-border rounded-md border border-border" data-testid="zines-list">
-		{#each data.zines as zine (zine.id)}
-			<li>
-				<a
-					href={`/app/zines/${zine.id}/edit`}
-					class="flex items-center justify-between px-4 py-3 hover:bg-muted"
-				>
-					<div>
-						<p class="font-medium text-foreground">{zine.title}</p>
-						<p class="text-xs text-muted-foreground">Updated {formatDate(zine.updated_at)}</p>
-					</div>
-					<span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground">
-						{statusLabel[zine.status] ?? zine.status}
-					</span>
-				</a>
-			</li>
-		{/each}
-	</ul>
-{/if}
+	{#if creating}
+		<form method="POST" action="?/create" use:enhance class="create-zine pixel-panel-soft">
+			<label class="create-zine__field">
+				<span>Title</span>
+				<input name="title" type="text" placeholder="My zine" required class="pixel-input" />
+			</label>
+			<fieldset>
+				<legend>Start from</legend>
+				<div class="template-grid">
+					{#each ZINE_TEMPLATES as template, i (template.id)}
+						<label class="template-choice">
+							<input type="radio" name="template" value={template.id} checked={i === 0} />
+							<span>
+								<span>{template.label}</span>
+								<small>{template.description}</small>
+							</span>
+						</label>
+					{/each}
+				</div>
+			</fieldset>
+			{#if form?.message}
+				<p role="alert" class="create-zine__error">{form.message}</p>
+			{/if}
+			<button type="submit" class="pixel-button pixel-button--dark create-zine__submit">
+				Create &amp; open editor
+			</button>
+		</form>
+	{/if}
+
+	{#if data.zines.length === 0}
+		<div class="empty-shelf pixel-panel-soft" data-testid="zines-empty">
+			<p>No zines on the shelf yet.</p>
+			<button type="button" onclick={() => (creating = true)} class="pixel-button">
+				Start one
+			</button>
+		</div>
+	{:else}
+		<ul class="zine-list pixel-panel-soft" data-testid="zines-list">
+			{#each data.zines as zine (zine.id)}
+				<li>
+					<a href={`/app/zines/${zine.id}/edit`} class="zine-list__row">
+						<div>
+							<p>{zine.title}</p>
+							<small>Updated {formatDate(zine.updated_at)}</small>
+						</div>
+						<span class="pixel-badge">
+							{statusLabel[zine.status] ?? zine.status}
+						</span>
+					</a>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</section>
+
+<style>
+	.zines-dashboard {
+		display: grid;
+		gap: 1.1rem;
+	}
+	.zines-dashboard__head {
+		display: flex;
+		align-items: end;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+	.zines-dashboard h1 {
+		margin: 0.15rem 0 0;
+		font-size: 2.4rem;
+		line-height: 1;
+	}
+	.zines-dashboard__new {
+		padding: 0.65rem 1rem;
+	}
+	.create-zine {
+		display: grid;
+		gap: 1rem;
+		padding: 1rem;
+	}
+	.create-zine__field {
+		display: grid;
+		gap: 0.38rem;
+	}
+	.create-zine__field span,
+	.create-zine legend {
+		color: hsl(var(--foreground));
+		font-size: 0.86rem;
+		font-weight: 850;
+	}
+	.create-zine input[type='text'] {
+		width: 100%;
+		padding: 0.65rem 0.75rem;
+	}
+	.template-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.7rem;
+		margin-top: 0.55rem;
+	}
+	.template-choice {
+		display: flex;
+		cursor: pointer;
+		gap: 0.7rem;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.97 0.02 82);
+		padding: 0.75rem;
+		box-shadow: 0.12rem 0.12rem 0 var(--pixel-ink);
+	}
+	.template-choice:has(:checked) {
+		background: var(--pixel-green);
+	}
+	.template-choice input {
+		margin-top: 0.2rem;
+		accent-color: hsl(var(--primary));
+	}
+	.template-choice span span {
+		display: block;
+		color: hsl(var(--foreground));
+		font-size: 0.9rem;
+		font-weight: 850;
+	}
+	.template-choice small {
+		display: block;
+		margin-top: 0.18rem;
+		color: hsl(var(--muted-foreground));
+		font-size: 0.76rem;
+		line-height: 1.35;
+	}
+	.create-zine__error {
+		margin: 0;
+		color: hsl(var(--destructive));
+		font-size: 0.84rem;
+		font-weight: 750;
+	}
+	.create-zine__submit {
+		justify-self: start;
+		padding: 0.65rem 1rem;
+	}
+	.empty-shelf {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 1rem;
+	}
+	.empty-shelf p {
+		margin: 0;
+		color: hsl(var(--muted-foreground));
+		font-weight: 750;
+	}
+	.empty-shelf button {
+		padding: 0.5rem 0.9rem;
+	}
+	.zine-list {
+		overflow: hidden;
+		padding: 0;
+		list-style: none;
+	}
+	.zine-list li + li {
+		border-top: 2px solid var(--pixel-ink);
+	}
+	.zine-list__row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.85rem 1rem;
+		color: inherit;
+		text-decoration: none;
+	}
+	.zine-list__row:hover {
+		background: oklch(0.82 0.16 86 / 0.35);
+	}
+	.zine-list__row p {
+		margin: 0;
+		color: hsl(var(--foreground));
+		font-weight: 850;
+	}
+	.zine-list__row small {
+		display: block;
+		margin-top: 0.15rem;
+		color: hsl(var(--muted-foreground));
+		font-size: 0.75rem;
+	}
+	@media (max-width: 720px) {
+		.zines-dashboard__head {
+			align-items: stretch;
+			flex-direction: column;
+		}
+		.template-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { getBlock } from '$lib/zine/registry';
 	import ZineRenderer from '$lib/zine/render/ZineRenderer.svelte';
 	import BlockFrame from '$lib/zine/render/BlockFrame.svelte';
 	import {
 		DEFAULT_WAYPOINTS,
-		pathTransform,
-		samplePath,
+		MAX_PATH_WAYPOINTS,
 		type PathEase,
 		type Waypoint
 	} from '$lib/zine/animations/path';
+	import { pathTransform, samplePath } from '$lib/zine/animations/path-runtime';
 	import type { Element, Scene, ZineDocument } from '$lib/zine/schema/document';
 	import type { EditorStore } from './store.svelte';
 
@@ -34,11 +34,17 @@
 
 	// Initialise from the opened element; the in-stage switcher then changes it locally.
 	let activeId = $state(untrack(() => elementId));
-	let scrub = $state(0);
+	let scrub = $state(0.5);
 	let selected = $state(0);
+	let dialogEl = $state<HTMLDivElement | null>(null);
 	let stageEl = $state<HTMLDivElement | null>(null);
+	let doneButtonEl = $state<HTMLButtonElement | null>(null);
+	let previousFocus: HTMLElement | null = null;
 	// A live preview of the waypoints during a drag (committed on pointer-up).
 	let draft = $state<Waypoint[] | null>(null);
+	let dragCleanup: (() => void) | null = null;
+	let dragElementId: string | null = null;
+	let pathStatus = $state('');
 
 	const freeElements = $derived(scene.elements.filter((element) => element.placement === 'free'));
 	const element = $derived<Element | undefined>(
@@ -50,6 +56,7 @@
 		return Array.isArray(raw) && raw.length >= 2 ? (raw as Waypoint[]) : DEFAULT_WAYPOINTS;
 	}
 	const waypoints = $derived(draft ?? waypointsOf(element));
+	const canAddPoint = $derived(waypointsOf(element).length < MAX_PATH_WAYPOINTS);
 
 	// The backdrop = the scene with free sprites stripped, so ZineRenderer draws only the
 	// scenery/content (we draw the sprites ourselves, interactively, on top).
@@ -82,51 +89,74 @@
 		return Math.round(value * 100) / 100;
 	}
 
-	function stagePoint(event: PointerEvent): { x: number; y: number } {
+	function stagePoint(event: PointerEvent): { x: number; y: number } | null {
 		const rect = stageEl?.getBoundingClientRect();
-		if (!rect || rect.width === 0 || rect.height === 0) return { x: 50, y: 50 };
+		if (!rect || rect.width === 0 || rect.height === 0) return null;
 		return {
 			x: round(clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100)),
 			y: round(clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100))
 		};
 	}
 
-	function commit(next: Waypoint[]): void {
-		if (element) store.setElementPath(element.id, next);
+	function commit(elementId: string | undefined, next: Waypoint[]): void {
+		if (elementId) store.setElementPath(elementId, next);
 	}
 
-	// Insert or move the control point nearest the current scrub to (x,y) — the "scrub + drag a
-	// keyframe" gesture. A point already near this scroll position is moved; otherwise a new one
-	// is dropped at `scrub`, inheriting the look of its neighbour.
-	function upsertAt(at: number, x: number, y: number): Waypoint[] {
-		const list = waypointsOf(element).map((w) => ({ ...w }));
-		const near = list.findIndex((w) => Math.abs(w.at - at) < 0.04);
-		if (near >= 0) {
-			list[near] = { ...list[near], x, y };
-			selected = near;
-			return list;
-		}
-		const neighbour = list.reduce(
+	function selectedIndexAfter(list: Waypoint[], point: Waypoint): number {
+		const index = list.indexOf(point);
+		return index >= 0 ? index : Math.max(0, Math.min(selected, list.length - 1));
+	}
+
+	function nearestWaypoint(list: Waypoint[], at: number): Waypoint {
+		return list.reduce(
 			(best, w) => (Math.abs(w.at - at) < Math.abs(best.at - at) ? w : best),
 			list[0]
 		);
-		const point: Waypoint = { ...neighbour, at: round(at), x, y };
+	}
+
+	function addAt(at: number, x: number, y: number): Waypoint[] {
+		const list = waypointsOf(element).map((w) => ({ ...w }));
+		if (list.length >= MAX_PATH_WAYPOINTS) {
+			pathStatus = `This path already has ${MAX_PATH_WAYPOINTS} points. Move or delete one to add another.`;
+			return list;
+		}
+		const targetAt = safeAt(at, list);
+		const neighbour = nearestWaypoint(list, targetAt);
+		const point: Waypoint = { ...neighbour, at: targetAt, x, y };
 		const next = [...list, point].sort((a, b) => a.at - b.at);
-		selected = next.indexOf(point);
+		selected = selectedIndexAfter(next, point);
+		pathStatus =
+			Math.abs(targetAt - round(clamp(at, 0, 1))) < 0.001
+				? `Added point ${selected + 1}.`
+				: `Added point ${selected + 1} at ${Math.round(targetAt * 100)}% scroll.`;
 		return next;
 	}
 
 	function setSelected<K extends keyof Waypoint>(key: K, value: Waypoint[K]): void {
 		const list = waypointsOf(element).map((w) => ({ ...w }));
 		if (!list[selected]) return;
+		if (key === 'at') {
+			const moving = { ...list[selected], at: Number(value) };
+			list.splice(selected, 1);
+			moving.at = safeAt(moving.at, list);
+			const next = [...list, moving].sort((a, b) => a.at - b.at);
+			selected = selectedIndexAfter(next, moving);
+			commit(element?.id, next);
+			return;
+		}
 		list[selected] = { ...list[selected], [key]: value };
-		if (key === 'at') list.sort((a, b) => a.at - b.at);
-		commit(list);
+		commit(element?.id, list);
 	}
 
 	function addPointHere(): void {
+		if (!element) return;
+		if (!canAddPoint) {
+			pathStatus = `This path already has ${MAX_PATH_WAYPOINTS} points. Move or delete one to add another.`;
+			return;
+		}
 		const sample = samplePath(waypoints, scrub);
-		commit(upsertAt(scrub, round(sample.x), round(sample.y)));
+		const next = addAt(scrub, round(sample.x), round(sample.y));
+		commit(element.id, next);
 	}
 
 	function deleteSelected(): void {
@@ -136,14 +166,27 @@
 	function deleteAt(index: number): void {
 		const list = waypointsOf(element);
 		if (list.length <= 2) return; // a path needs at least two points
-		commit(list.filter((_, i) => i !== index));
+		commit(
+			element?.id,
+			list.filter((_, i) => i !== index)
+		);
 		selected = Math.max(0, index - 1);
+		pathStatus = `Deleted point ${index + 1}.`;
 	}
 
 	// ── point dragging (robust): capture the pointer on the grabbed element so move/up ALWAYS
 	//    reach us — the point can never get stuck to the cursor — even off the stage. ──────────
-	function beginDrag(event: PointerEvent, index: number, target: HTMLElement): void {
+	function beginDrag(
+		event: PointerEvent,
+		index: number,
+		target: HTMLElement,
+		elementId: string,
+		initialDraft?: Waypoint[]
+	): void {
+		finishDrag(true);
 		selected = index;
+		dragElementId = elementId;
+		if (initialDraft) draft = initialDraft.map((w) => ({ ...w }));
 		const pointerId = event.pointerId;
 		try {
 			target.setPointerCapture(pointerId);
@@ -151,45 +194,78 @@
 			/* capture unsupported — the element listeners below still fire */
 		}
 		const move = (e: PointerEvent) => {
-			const { x, y } = stagePoint(e);
+			if (e.pointerId !== pointerId) return;
+			const point = stagePoint(e);
+			if (!point) return;
+			const { x, y } = point;
 			const list = (draft ?? waypointsOf(element)).map((w) => ({ ...w }));
 			if (!list[index]) return;
 			list[index] = { ...list[index], x, y };
 			draft = list;
 		};
-		const end = () => {
+		const end = (e?: PointerEvent) => {
+			if (e && e.pointerId !== pointerId) return;
+			finishDrag(true);
+		};
+		dragCleanup = () => {
 			target.removeEventListener('pointermove', move);
 			target.removeEventListener('pointerup', end);
 			target.removeEventListener('pointercancel', end);
+			target.removeEventListener('lostpointercapture', end);
+			window.removeEventListener('pointermove', move);
+			window.removeEventListener('pointerup', end);
+			window.removeEventListener('pointercancel', end);
 			try {
 				target.releasePointerCapture(pointerId);
 			} catch {
 				/* already released */
 			}
-			if (draft) commit(draft);
-			draft = null;
 		};
 		target.addEventListener('pointermove', move);
 		target.addEventListener('pointerup', end);
 		target.addEventListener('pointercancel', end);
+		target.addEventListener('lostpointercapture', end);
+		window.addEventListener('pointermove', move);
+		window.addEventListener('pointerup', end);
+		window.addEventListener('pointercancel', end);
+	}
+
+	function finishDrag(shouldCommit: boolean): void {
+		const cleanup = dragCleanup;
+		dragCleanup = null;
+		if (cleanup) cleanup();
+		if (shouldCommit && draft && dragElementId) commit(dragElementId, draft);
+		draft = null;
+		dragElementId = null;
 	}
 
 	// Drag an existing control point.
 	function beginMarkerDrag(event: PointerEvent, index: number): void {
+		if (!element || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0))
+			return;
 		event.preventDefault();
 		event.stopPropagation();
-		beginDrag(event, index, event.currentTarget as HTMLElement);
+		pathStatus = `Moving point ${index + 1}.`;
+		beginDrag(event, index, event.currentTarget as HTMLElement, element.id);
 	}
 
 	// Click (or click-drag) anywhere on the empty stage to ADD a point there at the current
 	// scroll moment — the easy, arbitrary "place a point" gesture. Markers stop propagation, so
-	// this only fires on the stage surface. A click near an existing point's moment moves it.
+	// moving existing points stays explicit: drag the numbered dots.
 	function onStageDown(event: PointerEvent): void {
+		if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
 		if (!element || !stageEl) return;
 		event.preventDefault();
-		const { x, y } = stagePoint(event);
-		commit(upsertAt(scrub, x, y)); // sets `selected` to the new/moved point
-		beginDrag(event, selected, stageEl);
+		stageEl.focus();
+		if (!canAddPoint) {
+			pathStatus = `This path already has ${MAX_PATH_WAYPOINTS} points. Move or delete one to add another.`;
+			return;
+		}
+		const point = stagePoint(event);
+		if (!point) return;
+		const next = addAt(scrub, point.x, point.y); // sets `selected` to the new point
+		draft = next;
+		beginDrag(event, selected, stageEl, element.id, next);
 	}
 
 	function nudgeSelected(event: KeyboardEvent): void {
@@ -203,8 +279,96 @@
 		else if (event.key === 'ArrowDown') w.y = clamp(w.y + step, 0, 100);
 		else return;
 		event.preventDefault();
-		commit(list);
+		commit(element?.id, list);
+		pathStatus = `Moved point ${selected + 1}.`;
 	}
+
+	function onPointKeydown(event: KeyboardEvent): void {
+		event.stopPropagation();
+		if (event.key === 'Delete' || event.key === 'Backspace') {
+			event.preventDefault();
+			deleteSelected();
+			return;
+		}
+		nudgeSelected(event);
+	}
+
+	function onStageKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			addPointHere();
+			return;
+		}
+		if (event.key === 'Delete' || event.key === 'Backspace') {
+			event.preventDefault();
+			deleteSelected();
+			return;
+		}
+		nudgeSelected(event);
+	}
+
+	function safeAt(at: number, others: Waypoint[]): number {
+		const used = new Set(others.map((w) => round(w.at).toFixed(2)));
+		const preferred = round(clamp(at, 0, 1));
+		const key = (value: number) => value.toFixed(2);
+		if (!used.has(key(preferred))) return preferred;
+
+		for (let step = 1; step <= 100; step++) {
+			const offset = step / 100;
+			const candidates = [preferred + offset, preferred - offset];
+			for (const candidate of candidates) {
+				if (candidate < 0 || candidate > 1) continue;
+				const rounded = round(candidate);
+				if (!used.has(key(rounded))) return rounded;
+			}
+		}
+		return preferred;
+	}
+
+	function switchElement(id: string): void {
+		finishDrag(true);
+		activeId = id;
+		selected = 0;
+		pathStatus = '';
+	}
+
+	function closeEditor(): void {
+		finishDrag(true);
+		onClose();
+	}
+
+	function focusableNodes(): HTMLElement[] {
+		if (!dialogEl) return [];
+		return [
+			...dialogEl.querySelectorAll<HTMLElement>(
+				'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+			)
+		].filter((node) => node.offsetParent !== null || node === stageEl);
+	}
+
+	function onDialogKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			closeEditor();
+			return;
+		}
+		if (event.key !== 'Tab') return;
+		const nodes = focusableNodes();
+		if (nodes.length === 0) return;
+		const first = nodes[0];
+		const last = nodes[nodes.length - 1];
+		if (event.shiftKey && globalThis.document.activeElement === first) {
+			event.preventDefault();
+			last.focus();
+		} else if (!event.shiftKey && globalThis.document.activeElement === last) {
+			event.preventDefault();
+			first.focus();
+		}
+	}
+
+	$effect(() => {
+		if (selected >= waypoints.length) selected = Math.max(0, waypoints.length - 1);
+	});
 
 	// The path as an SVG polyline sampled finely (so eased/arc segments curve).
 	const pathD = $derived.by(() => {
@@ -218,17 +382,35 @@
 	});
 	const ghost = $derived(samplePath(waypoints, scrub));
 
+	onMount(() => {
+		previousFocus =
+			globalThis.document.activeElement instanceof HTMLElement
+				? globalThis.document.activeElement
+				: null;
+		void tick().then(() => (stageEl ?? doneButtonEl)?.focus());
+	});
+
 	onDestroy(() => {
-		// Listeners are one-shot (added per drag, removed on pointer-up); nothing persistent.
+		finishDrag(true);
+		previousFocus?.focus();
 	});
 </script>
 
-<div class="path-editor" role="dialog" aria-modal="true" aria-label="Choreograph movement">
-	<button type="button" class="scrim" aria-label="Close" onclick={onClose}></button>
+<div
+	class="path-editor"
+	role="dialog"
+	aria-modal="true"
+	aria-labelledby="path-editor-title"
+	bind:this={dialogEl}
+	tabindex="-1"
+	onkeydown={onDialogKeydown}
+>
+	<button type="button" class="scrim" aria-label="Close" onclick={closeEditor}></button>
 	<div class="panel">
 		<header class="panel__head">
-			<h2>Choreograph movement</h2>
-			<button type="button" class="done" onclick={onClose}>Done</button>
+			<h2 id="path-editor-title">Choreograph movement</h2>
+			<button type="button" class="done" bind:this={doneButtonEl} onclick={closeEditor}>Done</button
+			>
 		</header>
 
 		{#if !element}
@@ -240,7 +422,7 @@
 						<button
 							type="button"
 							aria-pressed={candidate.id === element.id}
-							onclick={() => (activeId = candidate.id)}
+							onclick={() => switchElement(candidate.id)}
 						>
 							{getBlock(candidate.block.type)?.label ?? candidate.block.type}
 						</button>
@@ -251,8 +433,15 @@
 			<!-- The stage: a backdrop (real renderer) + the sprite ghost + the path overlay.
 			     `container-type: size` so the sprite's cqw/cqh resolve here exactly as they do on
 			     the published page. Click the surface to drop a point; drag the dots to move them. -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="stage" bind:this={stageEl} onpointerdown={onStageDown}>
+			<div
+				class="stage"
+				bind:this={stageEl}
+				role="button"
+				tabindex="0"
+				aria-label="Path stage. Press Enter to add a point at the current reader scroll, arrow keys to move the selected point, Delete to remove it."
+				onpointerdown={onStageDown}
+				onkeydown={onStageKeydown}
+			>
 				<div class="stage__backdrop" aria-hidden="true">
 					<ZineRenderer document={backdropDoc} sceneProgress={backdropProgress} pinScenes={false} />
 				</div>
@@ -291,11 +480,12 @@
 						aria-label={`Point ${i + 1} at ${Math.round(w.at * 100)}% scroll — drag to move, double-click to remove`}
 						onpointerdown={(event) => beginMarkerDrag(event, i)}
 						onclick={() => (selected = i)}
+						onfocus={() => (selected = i)}
 						ondblclick={(event) => {
 							event.stopPropagation();
 							deleteAt(i);
 						}}
-						onkeydown={nudgeSelected}
+						onkeydown={onPointKeydown}
 					>
 						<span>{i + 1}</span>
 					</button>
@@ -306,6 +496,7 @@
 				<span>Reader scroll</span>
 				<input
 					type="range"
+					aria-label="Reader scroll"
 					min="0"
 					max="1"
 					step="0.001"
@@ -314,16 +505,21 @@
 				/>
 				<output>{Math.round(scrub * 100)}%</output>
 			</label>
-			<p class="hint">
-				Scrub the scroll, then <strong>click the stage</strong> to drop a point there. Drag a
-				numbered point to move it; <strong>double-click</strong> it to remove it.
+			<p class="hint" id="path-editor-hint">
+				Scrub the scroll, then click the stage or press Enter to place a point. Drag or use arrow
+				keys to move it; Delete removes it.
+			</p>
+			<p class="status" aria-live="polite">
+				{pathStatus || `${waypoints.length} of ${MAX_PATH_WAYPOINTS} points used.`}
 			</p>
 
 			<div class="points">
 				<div class="points__head">
 					<span>Point {selected + 1} of {waypoints.length}</span>
 					<div>
-						<button type="button" onclick={addPointHere}>+ Point here</button>
+						<button type="button" disabled={!canAddPoint} onclick={addPointHere}>
+							+ Point here
+						</button>
 						<button
 							type="button"
 							class="danger"
@@ -394,7 +590,10 @@
 		position: absolute;
 		inset: 0;
 		border: 0;
-		background: hsl(var(--foreground) / 0.45);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.24) 1px, transparent 1px),
+			oklch(0.24 0.065 281 / 0.68);
+		background-size: 8px 8px;
 		cursor: pointer;
 	}
 	.panel {
@@ -404,9 +603,10 @@
 		width: min(56rem, 100%);
 		max-height: calc(100vh - 3rem);
 		overflow-y: auto;
-		border-radius: 0.7rem;
-		background: hsl(var(--background));
-		box-shadow: 0 18px 48px hsl(var(--foreground) / 0.25);
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		box-shadow: var(--pixel-shadow);
 		padding: 1rem 1.1rem 1.2rem;
 	}
 	.panel__head {
@@ -417,15 +617,17 @@
 	.panel__head h2 {
 		margin: 0;
 		font-size: 1.1rem;
-		font-weight: 760;
+		font-weight: 950;
+		text-shadow: 0.08rem 0.08rem 0 var(--pixel-yellow);
 	}
 	.done {
-		border: 0;
-		border-radius: 0.5rem;
-		background: hsl(var(--foreground));
-		color: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-magenta);
+		box-shadow: 0.12rem 0.12rem 0 var(--pixel-ink);
+		color: hsl(var(--primary-foreground));
 		padding: 0.5rem 0.85rem;
-		font-weight: 700;
+		font-weight: 900;
 	}
 	.empty {
 		color: hsl(var(--muted-foreground));
@@ -436,28 +638,33 @@
 		gap: 0.35rem;
 	}
 	.switcher button {
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.4rem;
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		box-shadow: 0.1rem 0.1rem 0 var(--pixel-ink);
 		padding: 0.35rem 0.6rem;
 		font-size: 0.82rem;
-		font-weight: 700;
+		font-weight: 850;
 		color: hsl(var(--foreground));
 	}
 	.switcher button[aria-pressed='true'] {
-		border-color: hsl(var(--primary));
-		background: hsl(var(--muted));
+		background: var(--pixel-green);
 	}
 	.stage {
 		position: relative;
 		container-type: size;
 		aspect-ratio: 16 / 10;
 		overflow: hidden;
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.5rem;
+		border: 3px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
 		background: var(--zine-bg, hsl(var(--muted)));
+		box-shadow: inset 0 0 0 3px oklch(0.24 0.065 281 / 0.12);
 		touch-action: none;
 		user-select: none;
+	}
+	.stage:focus-visible {
+		outline: 3px solid var(--pixel-cyan);
+		outline-offset: 2px;
 	}
 	.stage__backdrop {
 		position: absolute;
@@ -482,7 +689,7 @@
 		pointer-events: none;
 	}
 	.sprite.is-active {
-		outline: 2px dashed hsl(var(--primary));
+		outline: 3px dashed var(--pixel-magenta);
 		outline-offset: 3px;
 	}
 	.sprite :global(.zine-block) {
@@ -504,14 +711,14 @@
 	}
 	.route {
 		fill: none;
-		stroke: hsl(var(--primary));
+		stroke: var(--pixel-magenta);
 		stroke-width: 2;
 		stroke-dasharray: 4 3;
 		opacity: 0.85;
 	}
 	.ghost {
-		fill: hsl(var(--primary) / 0.5);
-		stroke: hsl(var(--background));
+		fill: oklch(0.82 0.16 86 / 0.58);
+		stroke: var(--pixel-ink);
 		stroke-width: 1;
 	}
 	.marker {
@@ -521,10 +728,10 @@
 		place-items: center;
 		width: 1.5rem;
 		height: 1.5rem;
-		border: 2px solid hsl(var(--background));
-		border-radius: 999px;
-		background: hsl(var(--primary));
-		color: #fff;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-magenta);
+		color: hsl(var(--primary-foreground));
 		font-size: 0.7rem;
 		font-weight: 800;
 		transform: translate(-50%, -50%);
@@ -532,8 +739,10 @@
 		touch-action: none;
 	}
 	.marker.is-selected {
-		outline: 2px solid hsl(var(--foreground));
-		outline-offset: 1px;
+		background: var(--pixel-green);
+		color: var(--pixel-ink);
+		outline: 3px solid var(--pixel-yellow);
+		outline-offset: 2px;
 	}
 	.scrubber {
 		display: grid;
@@ -564,11 +773,19 @@
 		font-size: 0.74rem;
 		color: hsl(var(--muted-foreground));
 	}
+	.status {
+		margin: -0.3rem 0 0;
+		font-size: 0.74rem;
+		font-weight: 700;
+		color: hsl(var(--foreground));
+	}
 	.points {
 		display: grid;
 		gap: 0.55rem;
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.5rem;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.97 0.02 82);
+		box-shadow: var(--pixel-shadow-sm);
 		padding: 0.7rem 0.8rem;
 	}
 	.points__head {
@@ -583,16 +800,17 @@
 		gap: 0.4rem;
 	}
 	.points__head button {
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.4rem;
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		box-shadow: 0.1rem 0.1rem 0 var(--pixel-ink);
 		padding: 0.32rem 0.55rem;
 		font-size: 0.78rem;
-		font-weight: 700;
+		font-weight: 850;
 		color: hsl(var(--foreground));
 	}
 	.points__head .danger {
-		color: #b42318;
+		color: hsl(var(--destructive));
 	}
 	.points__head button:disabled {
 		opacity: 0.4;
@@ -616,21 +834,20 @@
 	}
 	.chips button {
 		flex: 1 1 auto;
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.35rem;
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
 		padding: 0.32rem 0.4rem;
 		font-size: 0.76rem;
-		font-weight: 700;
+		font-weight: 850;
 		color: hsl(var(--foreground));
 	}
 	.chips button[aria-pressed='true'] {
-		border-color: hsl(var(--primary));
-		background: hsl(var(--muted));
+		background: var(--pixel-cyan);
 	}
 	button:focus-visible,
 	input:focus-visible {
-		outline: 2px solid hsl(var(--primary));
+		outline: 3px solid var(--pixel-cyan);
 		outline-offset: 2px;
 	}
 </style>

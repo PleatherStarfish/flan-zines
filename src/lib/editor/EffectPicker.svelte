@@ -1,15 +1,12 @@
 <script lang="ts">
-	import { effectsForSlot, getBlock } from '$lib/zine/registry';
 	import { DEFAULT_WAYPOINTS } from '$lib/zine/animations/path';
+	import { effectsForSlot, getBlock, getEffect } from '$lib/zine/registry';
 	import type { AnyAnimationDef, EffectSlot } from '$lib/zine/schema/animation';
 	import type { Element } from '$lib/zine/schema/document';
 	import type { EditorStore } from './store.svelte';
 
-	// Funnel B (scene-timeline.md §6): tap a clip → pick what it should do. Each slot
-	// offers "Still" + a short, picture-led list of effects (filtered to the block's
-	// allowedAnimations), then at most three knob chips — Speed / Direction / Amount,
-	// never a number. The exception is a deep-`editor` effect (Choreograph), which opens the
-	// visual stage instead. Writes registry EffectRefs to the element's enter/exit/motion slots.
+	// The rail should answer one question at a time. Effects are mutually exclusive per slot,
+	// so a select is calmer than a wall of chips; deeper knobs stay folded until requested.
 	let {
 		store,
 		element,
@@ -18,12 +15,13 @@
 
 	type SlotSection = { slot: EffectSlot; title: string; group: AnyAnimationDef['group'] };
 	const sections: SlotSection[] = [
-		{ slot: 'enter', title: 'How it appears', group: 'appear' },
-		{ slot: 'motion', title: 'While it’s here', group: 'motion' },
-		{ slot: 'exit', title: 'How it leaves', group: 'appear' }
+		{ slot: 'enter', title: 'Appears', group: 'appear' },
+		{ slot: 'motion', title: 'Moves while visible', group: 'motion' },
+		{ slot: 'exit', title: 'Leaves', group: 'appear' }
 	];
 
 	const allowed = $derived(new Set(getBlock(element.block.type)?.allowedAnimations ?? []));
+	const anyOptions = $derived(sections.some((section) => optionsFor(section).length > 0));
 
 	function optionsFor(section: SlotSection): AnyAnimationDef[] {
 		return effectsForSlot(section.slot, section.group).filter((def) => allowed.has(def.type));
@@ -31,6 +29,12 @@
 
 	function currentType(slot: EffectSlot): string | null {
 		return element[slot]?.type ?? null;
+	}
+
+	function activeLabel(slot: EffectSlot, options: AnyAnimationDef[]): string {
+		const active = currentType(slot);
+		if (!active) return 'None';
+		return options.find((def) => def.type === active)?.label ?? getEffect(active)?.label ?? active;
 	}
 
 	function knobValue(slot: EffectSlot, def: AnyAnimationDef, key: string): string {
@@ -45,14 +49,12 @@
 	function chooseEffect(slot: EffectSlot, def: AnyAnimationDef | null): void {
 		if (!def) {
 			store.setElementEffect(element.id, slot, undefined);
-			// Leaving a path also drops the free placement so the element returns to the flow.
-			if (slot === 'motion' && element.placement === 'free')
+			if (slot === 'motion' && element.placement === 'free') {
 				store.setElementPlacement(element.id, undefined);
+			}
 			return;
 		}
 		if (def.editor === 'path') {
-			// Choreograph: make it a free sprite on a starter path spanning the scene, then open
-			// the visual stage to author the control points.
 			store.setElementPath(element.id, structuredClone(DEFAULT_WAYPOINTS));
 			store.updateElementRange(element.id, { start: 0, end: 1 });
 			onEditPath?.(element.id);
@@ -62,6 +64,13 @@
 			type: def.type,
 			params: structuredClone(def.defaults) as Record<string, unknown>
 		});
+	}
+
+	function chooseType(slot: EffectSlot, options: AnyAnimationDef[], value: string): void {
+		chooseEffect(
+			slot,
+			value === 'none' ? null : (options.find((def) => def.type === value) ?? null)
+		);
 	}
 
 	function setKnob(slot: EffectSlot, def: AnyAnimationDef, key: string, value: string): void {
@@ -76,51 +85,48 @@
 			params: (parsed.success ? parsed.data : def.defaults) as Record<string, unknown>
 		});
 	}
-
-	const anyOptions = $derived(sections.some((section) => optionsFor(section).length > 0));
 </script>
 
-<section class="effect-picker" aria-label="What should it do?">
-	<h3>What should it do?</h3>
+<section class="effect-picker" aria-label="Motion">
+	<div class="effect-picker__intro">
+		<h3>Motion</h3>
+		<p>Pick a simple behavior. Open fine tuning only when the timing needs a nudge.</p>
+	</div>
+
 	{#if !anyOptions}
-		<p class="effect-picker__empty">This element stays still — that’s perfect for a calm page.</p>
+		<p class="effect-picker__empty">This element is best left still.</p>
 	{:else}
 		{#each sections as section (section.slot)}
 			{@const options = optionsFor(section)}
 			{#if options.length > 0}
 				{@const active = currentType(section.slot)}
-				<div class="slot">
-					<h4>{section.title}</h4>
-					<div class="effect-grid" role="group" aria-label={section.title}>
-						<button
-							type="button"
-							class="effect-chip"
-							aria-pressed={active === null}
-							onclick={() => chooseEffect(section.slot, null)}
-						>
-							<span class="effect-chip__icon" aria-hidden="true">⏺️</span>
-							Still
-						</button>
-						{#each options as def (def.type)}
-							<button
-								type="button"
-								class="effect-chip"
-								aria-pressed={active === def.type}
-								onclick={() => chooseEffect(section.slot, def)}
-							>
-								<span class="effect-chip__icon" aria-hidden="true">{def.icon}</span>
-								{def.label}
-							</button>
-						{/each}
-					</div>
+				{@const def = active ? options.find((option) => option.type === active) : undefined}
+				<details class="slot" open={Boolean(active)}>
+					<summary>
+						<span>{section.title}</span>
+						<strong>{activeLabel(section.slot, options)}</strong>
+					</summary>
 
-					{#if active}
-						{@const def = options.find((option) => option.type === active)}
-						{#if def?.editor === 'path'}
-							<button type="button" class="edit-path" onclick={() => onEditPath?.(element.id)}>
-								✎ Edit the path
-							</button>
-						{:else if def}
+					<label class="effect-select">
+						<span>Effect</span>
+						<select
+							value={active ?? 'none'}
+							onchange={(event) => chooseType(section.slot, options, event.currentTarget.value)}
+						>
+							<option value="none">No effect</option>
+							{#each options as option (option.type)}
+								<option value={option.type}>{option.icon} {option.label}</option>
+							{/each}
+						</select>
+					</label>
+
+					{#if def?.editor === 'path'}
+						<button type="button" class="edit-path" onclick={() => onEditPath?.(element.id)}>
+							Edit the path
+						</button>
+					{:else if def?.knobs.length}
+						<details class="slot__tweaks">
+							<summary>Fine tune</summary>
 							{#each def.knobs as knob (knob.key)}
 								<div class="knob" role="group" aria-label={knob.label}>
 									<span class="knob__label">{knob.label}</span>
@@ -137,9 +143,9 @@
 									</div>
 								</div>
 							{/each}
-						{/if}
+						</details>
 					{/if}
-				</div>
+				</details>
 			{/if}
 		{/each}
 	{/if}
@@ -148,71 +154,103 @@
 <style>
 	.effect-picker {
 		display: grid;
-		gap: 0.9rem;
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.5rem;
-		background: hsl(var(--background));
-		padding: 0.85rem;
+		gap: 0.65rem;
 	}
-	.effect-picker h3 {
+	.effect-picker__intro {
+		display: grid;
+		gap: 0.2rem;
+	}
+	.effect-picker__intro h3 {
 		margin: 0;
-		font-size: 0.78rem;
-		font-weight: 760;
+		font-size: 0.86rem;
+		font-weight: 900;
 		color: hsl(var(--foreground));
 	}
+	.effect-picker__intro p,
 	.effect-picker__empty {
 		margin: 0;
-		font-size: 0.82rem;
 		color: hsl(var(--muted-foreground));
+		font-size: 0.78rem;
+		line-height: 1.35;
 	}
 	.slot {
+		border: 2px solid oklch(0.24 0.065 281 / 0.34);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.985 0.015 82);
+		padding: 0.55rem 0.65rem;
+	}
+	.slot[open] {
+		box-shadow: 0.1rem 0.1rem 0 oklch(0.24 0.065 281 / 0.28);
+	}
+	.slot summary {
 		display: grid;
-		gap: 0.5rem;
-	}
-	.slot h4 {
-		margin: 0;
-		font-size: 0.72rem;
-		font-weight: 750;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		color: hsl(var(--muted-foreground));
-	}
-	.effect-grid {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0.4rem;
-	}
-	.effect-chip {
-		display: flex;
+		grid-template-columns: minmax(0, 1fr) max-content;
 		align-items: center;
-		gap: 0.4rem;
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.45rem;
-		background: hsl(var(--background));
-		padding: 0.45rem 0.5rem;
-		font-size: 0.82rem;
-		font-weight: 700;
+		gap: 0.45rem;
+		cursor: pointer;
+	}
+	.slot summary span {
+		font-size: 0.8rem;
+		font-weight: 850;
 		color: hsl(var(--foreground));
-		text-align: left;
 	}
-	.effect-chip__icon {
-		font-size: 1rem;
-		line-height: 1;
+	.slot summary strong {
+		overflow: hidden;
+		max-width: 8.5rem;
+		border: 1px solid oklch(0.24 0.065 281 / 0.32);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		padding: 0.12rem 0.38rem;
+		color: hsl(var(--muted-foreground));
+		font-size: 0.7rem;
+		font-weight: 800;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 	}
-	.effect-chip[aria-pressed='true'] {
-		border-color: hsl(var(--primary));
-		background: hsl(var(--muted));
+	.effect-select {
+		display: grid;
+		gap: 0.3rem;
+		margin-top: 0.55rem;
+	}
+	.effect-select span,
+	.knob__label {
+		color: hsl(var(--muted-foreground));
+		font-size: 0.74rem;
+		font-weight: 800;
+	}
+	.effect-select select {
+		width: 100%;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		padding: 0.48rem 0.55rem;
+		color: hsl(var(--foreground));
+		font-size: 0.82rem;
+		font-weight: 780;
+	}
+	.slot__tweaks {
+		margin-top: 0.6rem;
+		border-top: 2px dashed oklch(0.24 0.065 281 / 0.28);
+		padding-top: 0.5rem;
+	}
+	.slot__tweaks[open] {
+		box-shadow: none;
+	}
+	.slot__tweaks summary {
+		display: block;
+		color: hsl(var(--muted-foreground));
+		font-size: 0.76rem;
+		font-weight: 850;
+	}
+	.slot__tweaks[open] summary {
+		margin-bottom: 0.55rem;
 	}
 	.knob {
 		display: grid;
-		grid-template-columns: 4.5rem minmax(0, 1fr);
-		align-items: center;
-		gap: 0.5rem;
+		gap: 0.35rem;
 	}
-	.knob__label {
-		font-size: 0.76rem;
-		font-weight: 700;
-		color: hsl(var(--muted-foreground));
+	.knob + .knob {
+		margin-top: 0.55rem;
 	}
 	.knob__options {
 		display: flex;
@@ -221,32 +259,34 @@
 	}
 	.knob__options button {
 		flex: 1 1 auto;
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.35rem;
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
 		padding: 0.35rem 0.4rem;
-		font-size: 0.76rem;
-		font-weight: 700;
 		color: hsl(var(--foreground));
+		font-size: 0.76rem;
+		font-weight: 850;
 	}
 	.knob__options button[aria-pressed='true'] {
-		border-color: hsl(var(--primary));
-		background: hsl(var(--muted));
+		background: var(--pixel-cyan);
 	}
 	.edit-path {
+		margin-top: 0.6rem;
 		width: 100%;
-		border: 1px solid hsl(var(--primary));
-		border-radius: 0.45rem;
-		background: hsl(var(--primary) / 0.1);
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-magenta);
+		box-shadow: 0.12rem 0.12rem 0 var(--pixel-ink);
 		padding: 0.5rem;
+		color: hsl(var(--primary-foreground));
 		font-size: 0.84rem;
-		font-weight: 760;
-		color: hsl(var(--foreground));
+		font-weight: 900;
 	}
-	.effect-chip:focus-visible,
+	summary:focus-visible,
+	select:focus-visible,
 	.edit-path:focus-visible,
 	.knob__options button:focus-visible {
-		outline: 2px solid hsl(var(--primary));
+		outline: 3px solid var(--pixel-cyan);
 		outline-offset: 2px;
 	}
 </style>

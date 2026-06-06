@@ -1,9 +1,8 @@
 import { z } from 'zod';
 import { RichTextDocSchema } from '../../schema/richtext';
 
-// Rich text is stored as the validated ProseMirror-subset document (see
-// schema/richtext.ts). The editor (Step 3) produces it via TipTap; this block only
-// renders it.
+// Rich text is stored as the validated document subset (see schema/richtext.ts).
+// The focused text editor produces this JSON; the renderer only interprets it.
 export const RichTextPropsSchema = z.object({
 	doc: RichTextDocSchema
 });

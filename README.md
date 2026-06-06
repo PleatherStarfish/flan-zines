@@ -106,7 +106,7 @@ SUPABASE_DB_URL=postgresql://localhost/zine_test pnpm test      # applies shim+m
 A zine is **validated JSON**, not HTML: an ordered list of sections → blocks, each block validated
 against its registered schema (see [`src/lib/zine`](src/lib/zine)).
 
-- **See it:** `pnpm dev`, then open **http://localhost:5173/z/riverwild/why-we-read-at-night** (or click
+- **See it:** `pnpm dev`, then open **http://localhost:5173/z/riverwild/hidden-rivers-under-the-city** (or click
   “Preview a sample zine” on the homepage). The page is **server-rendered** from a fixture document.
 - **The contract is the registry.** `ZineDocument` (Zod) is derived from the block registry, so the
   validator and `ZineRenderer` never drift. The renderer reads only the registry — no hard-coded block

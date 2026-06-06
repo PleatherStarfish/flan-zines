@@ -152,6 +152,10 @@
 		top: 0;
 		height: 100vh;
 		height: 100dvh;
+		/* Sticky elements still occupy layout space. Pull that space back so the pinned
+		   scene content starts over the backdrop instead of one viewport below it. */
+		margin-bottom: -100vh;
+		margin-bottom: -100dvh;
 	}
 	.zine-bg__media {
 		position: absolute;

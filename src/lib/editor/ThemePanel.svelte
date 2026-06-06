@@ -1,9 +1,10 @@
 <script lang="ts">
 	import type { EditorStore } from './store.svelte';
 	import type { ThemeRole } from '$lib/zine/schema/theme';
-	import { FONT_PAIRS, resolveThemeColors, themeSwatches } from '$lib/zine/theme/registry';
+	import { resolveThemeColors, themeSwatches } from '$lib/zine/theme/registry';
 	import { getThemeCatalogue } from '$lib/zine/theme/catalogue';
 	import ContrastBadge from './ContrastBadge.svelte';
+	import FontPicker from './FontPicker.svelte';
 
 	// The colour tool: browse a wide catalogue of curated themes, pick the page background,
 	// assign theme colours to specific elements (with live contrast warnings), and customize
@@ -113,18 +114,10 @@
 		<p class="hint">Editing a swatch updates every element using it.</p>
 	</section>
 
-	<!-- Fonts (unchanged) -->
+	<!-- Fonts: pleasing combos (previewed) + a customize toggle -->
 	<section>
 		<p class="section-label">Fonts</p>
-		<select
-			value={store.doc.theme?.fontPair ?? 'editorial'}
-			onchange={(e) => store.setTheme({ fontPair: e.currentTarget.value })}
-			class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-		>
-			{#each FONT_PAIRS as f (f.id)}
-				<option value={f.id}>{f.label}</option>
-			{/each}
-		</select>
+		<FontPicker {store} />
 	</section>
 </div>
 
@@ -132,9 +125,9 @@
 	.section-label {
 		margin-bottom: 0.4rem;
 		font-size: 0.7rem;
-		font-weight: 700;
+		font-weight: 900;
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
+		letter-spacing: 0.08em;
 		color: hsl(var(--muted-foreground));
 	}
 	.hint {
@@ -144,7 +137,7 @@
 	}
 	.role-label {
 		font-size: 0.82rem;
-		font-weight: 600;
+		font-weight: 850;
 		color: hsl(var(--foreground));
 	}
 	/* Curated themes: a scrollable grid of swatch strips. */
@@ -160,11 +153,14 @@
 		display: flex;
 		height: 1.9rem;
 		overflow: hidden;
-		border-radius: 0.4rem;
-		border: 2px solid transparent;
+		border-radius: var(--pixel-radius);
+		border: 2px solid var(--pixel-ink);
+		box-shadow: 0.1rem 0.1rem 0 var(--pixel-ink);
 	}
 	.theme-tile[aria-pressed='true'] {
-		border-color: hsl(var(--primary));
+		box-shadow:
+			0 0 0 3px var(--pixel-yellow),
+			0.1rem 0.1rem 0 var(--pixel-ink);
 	}
 	.theme-tile .seg {
 		flex: 1 1 auto;
@@ -180,13 +176,13 @@
 		display: inline-block;
 		height: 1.4rem;
 		width: 1.4rem;
-		border-radius: 999px;
-		border: 1px solid hsl(var(--border));
+		border-radius: var(--pixel-radius);
+		border: 2px solid var(--pixel-ink);
 		cursor: pointer;
 	}
 	button.swatch.selected {
-		outline: 2px solid hsl(var(--foreground));
-		outline-offset: 1px;
+		outline: 3px solid var(--pixel-yellow);
+		outline-offset: 2px;
 	}
 	/* A native colour picker hidden behind a round chip / "+" affordance. */
 	.custom-swatch,
@@ -200,10 +196,10 @@
 		cursor: pointer;
 	}
 	.add-swatch {
-		border-radius: 999px;
-		border: 1px dashed hsl(var(--border));
+		border-radius: var(--pixel-radius);
+		border: 2px dashed var(--pixel-ink);
 		font-size: 0.9rem;
-		font-weight: 700;
+		font-weight: 900;
 		color: hsl(var(--muted-foreground));
 	}
 	.custom-swatch input[type='color'],
@@ -216,13 +212,13 @@
 		opacity: 0;
 	}
 	.custom-swatch:not(:has(.swatch)) {
-		border-radius: 999px;
-		border: 1px solid hsl(var(--border));
+		border-radius: var(--pixel-radius);
+		border: 2px solid var(--pixel-ink);
 		background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
 	}
 	button:focus-visible,
 	input:focus-visible {
-		outline: 2px solid hsl(var(--primary));
+		outline: 3px solid var(--pixel-cyan);
 		outline-offset: 2px;
 	}
 </style>

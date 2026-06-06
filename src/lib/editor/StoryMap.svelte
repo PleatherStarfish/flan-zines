@@ -256,7 +256,7 @@
 <style>
 	.story-map {
 		min-height: 100%;
-		background: hsl(var(--background));
+		background: transparent;
 		color: hsl(var(--foreground));
 	}
 	.story-map__header {
@@ -267,8 +267,8 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
-		border-bottom: 1px solid hsl(var(--border));
-		background: hsl(var(--background) / 0.96);
+		border-bottom: 2px solid var(--pixel-ink);
+		background: oklch(0.92 0.035 84 / 0.96);
 		padding: 1rem 1.5rem;
 	}
 	.story-map__eyebrow {
@@ -282,8 +282,9 @@
 	.story-map__title {
 		margin: 0;
 		font-size: 1.35rem;
-		font-weight: 750;
+		font-weight: 950;
 		line-height: 1.2;
+		text-shadow: 0.08rem 0.08rem 0 var(--pixel-yellow);
 	}
 	.story-map__actions,
 	.chapter-band__actions,
@@ -300,19 +301,33 @@
 	.scene-choices button {
 		border-radius: 0.5rem;
 		font-size: 0.88rem;
-		font-weight: 650;
+		font-weight: 850;
 	}
 	.primary-button {
-		background: hsl(var(--foreground));
-		color: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-magenta);
+		box-shadow: var(--pixel-shadow-sm);
+		color: hsl(var(--primary-foreground));
 		padding: 0.62rem 0.9rem;
 	}
 	.secondary-button,
 	.small-button {
-		border: 1px solid hsl(var(--border));
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		box-shadow: 0.12rem 0.12rem 0 var(--pixel-ink);
 		color: hsl(var(--foreground));
 		padding: 0.56rem 0.8rem;
+	}
+	.primary-button:hover,
+	.secondary-button:hover,
+	.small-button:hover,
+	.scene-card__controls button:hover,
+	.add-card:hover,
+	.scene-choices button:hover {
+		background: var(--pixel-yellow);
+		color: var(--pixel-ink);
 	}
 	.small-button {
 		padding: 0.42rem 0.65rem;
@@ -324,8 +339,8 @@
 		max-width: 30rem;
 		place-items: center;
 		gap: 0.9rem;
-		border: 1px dashed hsl(var(--border));
-		border-radius: 0.5rem;
+		border: 2px dashed var(--pixel-ink);
+		border-radius: var(--pixel-radius);
 		padding: 2rem;
 		color: hsl(var(--muted-foreground));
 	}
@@ -335,9 +350,10 @@
 		padding: 1.25rem;
 	}
 	.chapter-band {
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.5rem;
-		background: hsl(var(--muted) / 0.34);
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.94 0.032 83 / 0.82);
+		box-shadow: var(--pixel-shadow-sm);
 		padding: 1rem;
 	}
 	.chapter-band__header {
@@ -361,7 +377,7 @@
 	.chapter-title input {
 		width: 100%;
 		border: 0;
-		border-bottom: 1px solid transparent;
+		border-bottom: 2px solid transparent;
 		background: transparent;
 		padding: 0.2rem 0;
 		font-size: 1.15rem;
@@ -369,7 +385,7 @@
 		color: hsl(var(--foreground));
 	}
 	.chapter-title input:focus {
-		border-bottom-color: hsl(var(--primary));
+		border-bottom-color: var(--pixel-cyan);
 		outline: none;
 	}
 	.scene-choices {
@@ -379,8 +395,10 @@
 		gap: 0.6rem;
 	}
 	.scene-choices button {
-		border: 1px solid hsl(var(--border));
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.97 0.02 82);
+		box-shadow: 0.12rem 0.12rem 0 var(--pixel-ink);
 		padding: 0.7rem;
 		text-align: left;
 		color: hsl(var(--foreground));
@@ -399,14 +417,16 @@
 	.scene-card {
 		position: relative;
 		overflow: hidden;
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.5rem;
-		background: hsl(var(--background));
-		box-shadow: 0 1px 2px hsl(var(--foreground) / 0.05);
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.97 0.02 82);
+		box-shadow: var(--pixel-shadow-sm);
 	}
 	.scene-card.is-selected {
-		border-color: hsl(var(--primary));
-		box-shadow: 0 0 0 2px hsl(var(--primary) / 0.16);
+		background: oklch(0.86 0.09 196);
+		box-shadow:
+			0 0 0 3px var(--pixel-magenta),
+			var(--pixel-shadow-sm);
 	}
 	.scene-card__body {
 		padding: 0.8rem;
@@ -436,47 +456,52 @@
 		margin-top: 0.75rem;
 		height: 0.45rem;
 		border-radius: 999px;
-		background: hsl(var(--muted));
+		border: 1px solid var(--pixel-ink);
+		background: oklch(0.88 0.04 80);
 	}
 	.beat-dots span {
 		position: absolute;
 		top: 50%;
 		height: 0.55rem;
 		width: 0.55rem;
-		border-radius: 999px;
-		background: hsl(var(--foreground));
+		border-radius: 0.12rem;
+		background: var(--pixel-magenta);
 		transform: translate(-50%, -50%);
 	}
 	.scene-card__open {
 		position: absolute;
 		inset: 0;
 		z-index: 1;
-		border-radius: 0.5rem;
+		border-radius: var(--pixel-radius);
 	}
 	.scene-card__open:focus-visible {
-		outline: 2px solid hsl(var(--primary));
+		outline: 3px solid var(--pixel-cyan);
 		outline-offset: -3px;
 	}
 	.scene-card__controls {
 		position: relative;
 		z-index: 2;
-		border-top: 1px solid hsl(var(--border));
+		border-top: 2px solid var(--pixel-ink);
 		padding: 0.55rem 0.65rem;
 	}
 	.scene-card__controls button {
-		border: 1px solid hsl(var(--border));
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
 		padding: 0.35rem 0.5rem;
 		color: hsl(var(--foreground));
+		font-weight: 850;
 	}
 	.scene-card__controls .danger {
-		color: #b42318;
+		color: hsl(var(--destructive));
 	}
 	.add-card {
 		min-height: 14rem;
-		border: 1px dashed hsl(var(--border));
-		background: transparent;
+		border: 2px dashed var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.94 0.032 83 / 0.5);
 		color: hsl(var(--muted-foreground));
+		box-shadow: none;
 	}
 	.drop-end {
 		height: 0.35rem;
@@ -493,7 +518,10 @@
 		position: absolute;
 		inset: 0;
 		border: 0;
-		background: hsl(var(--foreground) / 0.4);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.22) 1px, transparent 1px),
+			oklch(0.24 0.065 281 / 0.62);
+		background-size: 8px 8px;
 		cursor: pointer;
 	}
 	.theme-drawer__panel {
@@ -501,15 +529,15 @@
 		display: flex;
 		width: min(24rem, 100%);
 		flex-direction: column;
-		border-left: 1px solid hsl(var(--border));
-		background: hsl(var(--background));
-		box-shadow: -8px 0 24px hsl(var(--foreground) / 0.15);
+		border-left: 2px solid var(--pixel-ink);
+		background: var(--pixel-paper);
+		box-shadow: -0.34rem 0 0 var(--pixel-ink);
 	}
 	.theme-drawer__header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		border-bottom: 1px solid hsl(var(--border));
+		border-bottom: 2px solid var(--pixel-ink);
 		padding: 0.9rem 1.1rem;
 	}
 	.theme-drawer__header h2 {

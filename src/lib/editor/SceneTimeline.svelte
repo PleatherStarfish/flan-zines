@@ -79,8 +79,6 @@
 
 	const sceneProgress = $derived({ [scene.id]: scrub });
 	const screens = $derived(sceneScrollScreens(scene));
-	const axis = $derived(scene.scrollAxis ?? 'vertical');
-	const scrollPresets = [1, 2, 4, 8];
 
 	// The whole-screen markers shown on the ruler and as lane gridlines: one tick per
 	// screen of scroll distance, so a clip's position reads in real screens.
@@ -392,63 +390,9 @@
 			<output>{Math.round(scrub * 100)}%</output>
 		</label>
 
-		{#if scene.type !== 'page'}
-			<div class="scroll-axis" role="group" aria-label="Scroll direction">
-				<span class="scroll-length__label">Direction</span>
-				<div class="scroll-axis__choices">
-					<button
-						type="button"
-						aria-pressed={axis === 'vertical'}
-						onclick={() => store.setSceneScrollAxis(scene.id, 'vertical')}
-					>
-						↓ Scrolls down
-					</button>
-					<button
-						type="button"
-						aria-pressed={axis === 'horizontal'}
-						onclick={() => store.setSceneScrollAxis(scene.id, 'horizontal')}
-					>
-						→ Scrolls sideways
-					</button>
-				</div>
-			</div>
-			<div class="scroll-length" role="group" aria-label="Scroll length">
-				<span class="scroll-length__label">Scroll length</span>
-				<input
-					type="range"
-					aria-label="Scroll length in screens"
-					min="1"
-					max="12"
-					step="1"
-					value={screens}
-					oninput={(event) => store.setSceneScroll(scene.id, Number(event.currentTarget.value))}
-				/>
-				<output>{screens} {screens === 1 ? 'screen' : 'screens'}</output>
-				<div class="scroll-length__presets">
-					{#each scrollPresets as preset (preset)}
-						<button
-							type="button"
-							aria-pressed={screens === preset}
-							onclick={() => store.setSceneScroll(scene.id, preset)}
-						>
-							{preset}×
-						</button>
-					{/each}
-				</div>
-			</div>
-			<p class="preview-hint">
-				{#if axis === 'horizontal'}
-					The reader scrolls down and the scene pans sideways about {screens}
-					{screens === 1 ? 'screen' : 'screens'} wide.
-				{:else}
-					Scroll over the preview to play it. The reader scrolls about {screens} full {screens === 1
-						? 'screen'
-						: 'screens'} through this scene.
-				{/if}
-			</p>
-		{:else}
-			<p class="preview-hint">Scroll over the preview to play it — or drag the slider.</p>
-		{/if}
+		<p class="preview-hint">
+			Scroll over the preview to play it, or drag the slider. Scene travel lives in the sidebar.
+		</p>
 	</section>
 
 	<section class="timeline-panel" aria-label="Scene timeline">
@@ -601,15 +545,17 @@
 	}
 	.preview-panel,
 	.timeline-panel {
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.5rem;
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.97 0.02 82);
+		box-shadow: var(--pixel-shadow-sm);
 	}
 	.preview-panel {
 		overflow: hidden;
 	}
 	.preview-panel__canvas {
-		max-height: 24rem;
+		height: min(18rem, 42vh);
+		max-height: 18rem;
 		overflow: hidden;
 		background: var(--zine-bg, hsl(var(--background)));
 		overscroll-behavior: contain;
@@ -623,7 +569,7 @@
 		grid-template-columns: max-content minmax(0, 1fr) max-content;
 		align-items: center;
 		gap: 0.8rem;
-		border-top: 1px solid hsl(var(--border));
+		border-top: 2px solid var(--pixel-ink);
 		padding: 0.7rem 1rem 0.4rem;
 	}
 	.scrubber span {
@@ -633,7 +579,7 @@
 	}
 	.scrubber input {
 		width: 100%;
-		accent-color: hsl(var(--foreground));
+		accent-color: hsl(var(--primary));
 	}
 	.scrubber output {
 		font-size: 0.78rem;
@@ -647,80 +593,6 @@
 		font-size: 0.74rem;
 		color: hsl(var(--muted-foreground));
 	}
-	.scroll-axis {
-		display: grid;
-		grid-template-columns: max-content minmax(0, 1fr);
-		align-items: center;
-		gap: 0.6rem;
-		border-top: 1px dashed hsl(var(--border));
-		padding: 0.6rem 1rem 0.3rem;
-	}
-	.scroll-axis__choices {
-		display: flex;
-		gap: 0.35rem;
-	}
-	.scroll-axis__choices button {
-		flex: 1 1 auto;
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.4rem;
-		background: hsl(var(--background));
-		padding: 0.4rem 0.5rem;
-		font-size: 0.8rem;
-		font-weight: 700;
-		color: hsl(var(--foreground));
-	}
-	.scroll-axis__choices button[aria-pressed='true'] {
-		border-color: hsl(var(--primary));
-		background: hsl(var(--muted));
-	}
-	.scroll-length {
-		display: grid;
-		grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
-		align-items: center;
-		gap: 0.6rem;
-		padding: 0.4rem 1rem 0.6rem;
-	}
-	.scroll-length__label {
-		font-size: 0.78rem;
-		font-weight: 750;
-		color: hsl(var(--muted-foreground));
-	}
-	.scroll-length input {
-		width: 100%;
-		accent-color: hsl(var(--primary));
-	}
-	.scroll-length output {
-		font-size: 0.78rem;
-		font-weight: 760;
-		font-variant-numeric: tabular-nums;
-		color: hsl(var(--foreground));
-		white-space: nowrap;
-	}
-	.scroll-length__presets {
-		display: flex;
-		gap: 0.25rem;
-	}
-	.scroll-length__presets button {
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.35rem;
-		background: hsl(var(--background));
-		padding: 0.25rem 0.42rem;
-		font-size: 0.74rem;
-		font-weight: 700;
-		color: hsl(var(--foreground));
-	}
-	.scroll-length__presets button[aria-pressed='true'] {
-		border-color: hsl(var(--primary));
-		background: hsl(var(--muted));
-	}
-	@media (max-width: 640px) {
-		.scroll-length {
-			grid-template-columns: 1fr max-content;
-		}
-		.scroll-length__presets {
-			grid-column: 1 / -1;
-		}
-	}
 	.timeline-panel {
 		display: grid;
 		grid-template-rows: max-content minmax(0, 1fr);
@@ -731,8 +603,11 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.4rem;
-		border-bottom: 1px solid hsl(var(--border));
-		background: hsl(var(--muted) / 0.28);
+		border-bottom: 2px solid var(--pixel-ink);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.08) 1px, transparent 1px),
+			oklch(0.88 0.045 78);
+		background-size: 12px 12px;
 		padding: 0.6rem 0.75rem;
 	}
 	.timeline-toolbar__label {
@@ -744,19 +619,20 @@
 		color: hsl(var(--muted-foreground));
 	}
 	.timeline-toolbar button {
-		border: 1px solid hsl(var(--border));
-		border-radius: 0.45rem;
-		background: hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.97 0.02 82);
+		box-shadow: 0.1rem 0.1rem 0 var(--pixel-ink);
 		color: hsl(var(--foreground));
 		padding: 0.4rem 0.7rem;
 		font-size: 0.84rem;
-		font-weight: 700;
+		font-weight: 850;
 	}
 	.timeline-toolbar .moment-button {
 		margin-left: auto;
-		background: hsl(var(--foreground));
-		color: hsl(var(--background));
-		border-color: hsl(var(--foreground));
+		background: var(--pixel-magenta);
+		color: hsl(var(--primary-foreground));
+		border-color: var(--pixel-ink);
 	}
 	.timeline-grid {
 		display: grid;
@@ -766,15 +642,15 @@
 	.timeline-rulerrow {
 		display: grid;
 		grid-template-columns: var(--gutter) minmax(0, 1fr);
-		border-bottom: 1px solid hsl(var(--border));
-		background: hsl(var(--background));
+		border-bottom: 2px solid var(--pixel-ink);
+		background: oklch(0.94 0.032 83);
 		/* keep the ruler axis aligned with lane tracks despite the lanes' scrollbar */
 		scrollbar-gutter: stable;
 	}
 	.timeline-rulerrow__gutter {
 		display: flex;
 		align-items: center;
-		border-right: 1px solid hsl(var(--border));
+		border-right: 2px solid var(--pixel-ink);
 		padding: 0 0.75rem;
 		font-size: 0.72rem;
 		font-weight: 760;
@@ -793,7 +669,7 @@
 		top: 0;
 		bottom: 0;
 		width: 1px;
-		background: hsl(var(--border));
+		background: oklch(0.24 0.065 281 / 0.28);
 		pointer-events: none;
 	}
 	.screen-label {
@@ -812,7 +688,7 @@
 		bottom: 0;
 		z-index: 6;
 		width: 2px;
-		background: hsl(var(--primary));
+		background: var(--pixel-magenta);
 		pointer-events: none;
 	}
 	.playhead.is-active {
@@ -824,9 +700,9 @@
 		z-index: 7;
 		width: 0.85rem;
 		height: 0.85rem;
-		border: 2px solid hsl(var(--background));
+		border: 2px solid var(--pixel-ink);
 		border-radius: 0.2rem;
-		background: hsl(var(--foreground));
+		background: var(--pixel-yellow);
 		transform: translate(-50%, -50%) rotate(45deg);
 	}
 	.beat:focus-visible {
@@ -856,18 +732,18 @@
 		display: grid;
 		grid-template-columns: var(--gutter) minmax(0, 1fr);
 		align-items: stretch;
-		border-bottom: 1px solid hsl(var(--border));
+		border-bottom: 2px solid oklch(0.24 0.065 281 / 0.34);
 		/* per-track channel colour */
 		--lane-accent: 215 16% 47%;
 	}
 	.lane[data-track='content'] {
-		--lane-accent: 222 64% 53%;
+		--lane-accent: 200 78% 42%;
 	}
 	.lane[data-track='media'] {
-		--lane-accent: 150 55% 40%;
+		--lane-accent: 146 55% 39%;
 	}
 	.lane[data-track='background'] {
-		--lane-accent: 280 52% 56%;
+		--lane-accent: 325 70% 45%;
 	}
 	.lane.is-selected {
 		background: hsl(var(--lane-accent) / 0.07);
@@ -879,9 +755,8 @@
 		align-content: center;
 		gap: 0.1rem 0.5rem;
 		border: 0;
-		border-right: 1px solid hsl(var(--border));
-		border-left: 3px solid hsl(var(--lane-accent));
-		background: transparent;
+		border-right: 2px solid var(--pixel-ink);
+		background: hsl(var(--lane-accent) / 0.1);
 		padding: 0.5rem 0.6rem;
 		text-align: left;
 		cursor: pointer;
@@ -895,8 +770,9 @@
 	.lane__tag {
 		grid-row: 1;
 		align-self: center;
-		border-radius: 0.3rem;
-		background: hsl(var(--lane-accent) / 0.16);
+		border: 1px solid hsl(var(--lane-accent) / 0.55);
+		border-radius: var(--pixel-radius);
+		background: hsl(var(--lane-accent) / 0.18);
 		padding: 0.08rem 0.4rem;
 		font-size: 0.66rem;
 		font-weight: 760;
@@ -925,8 +801,9 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.2rem;
-		border-radius: 0.3rem;
-		background: hsl(var(--muted));
+		border: 1px solid oklch(0.24 0.065 281 / 0.32);
+		border-radius: var(--pixel-radius);
+		background: oklch(0.92 0.035 84);
 		padding: 0.05rem 0.34rem;
 		font-size: 0.68rem;
 		font-weight: 700;
@@ -941,7 +818,8 @@
 	.lane__track {
 		position: relative;
 		min-height: 3.4rem;
-		background-image: linear-gradient(to right, hsl(var(--border) / 0.7) 1px, transparent 1px);
+		background-color: oklch(0.94 0.032 83);
+		background-image: linear-gradient(to right, oklch(0.24 0.065 281 / 0.2) 2px, transparent 2px);
 		/* one cell per screen, so the gridlines line up with the ruler's screen markers */
 		background-size: calc(100% / var(--screens, 4)) 100%;
 		cursor: ew-resize;
@@ -954,16 +832,16 @@
 		display: grid;
 		grid-template-columns: 0.7rem minmax(1rem, 1fr) 0.7rem;
 		min-width: 3.2rem;
-		border: 1px solid hsl(var(--lane-accent) / 0.55);
-		border-radius: 0.45rem;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
 		background: hsl(var(--lane-accent));
-		color: #fff;
-		box-shadow: 0 1px 2px hsl(var(--foreground) / 0.18);
+		color: hsl(var(--primary-foreground));
+		box-shadow: 0.12rem 0.12rem 0 var(--pixel-ink);
 	}
 	.clip.is-selected {
 		box-shadow:
-			0 0 0 2px hsl(var(--primary)),
-			0 1px 3px hsl(var(--foreground) / 0.25);
+			0 0 0 3px var(--pixel-yellow),
+			0.12rem 0.12rem 0 var(--pixel-ink);
 	}
 	.clip__body,
 	.clip__handle {
@@ -1001,7 +879,7 @@
 	.clip__handle {
 		position: relative;
 		z-index: 3; /* stay grabbable above the ramp wedges */
-		background: hsl(0 0% 100% / 0.22);
+		background: hsl(var(--primary-foreground) / 0.22);
 		cursor: ew-resize;
 	}
 	.clip__handle--start {
@@ -1031,11 +909,15 @@
 		bottom: 0.18rem;
 		width: 2px;
 		border-radius: 1px;
-		background: hsl(0 0% 100% / 0.85);
+		background: hsl(var(--primary-foreground) / 0.85);
 	}
 	.clip__ramp--in {
 		left: 0;
-		background: linear-gradient(to right, hsl(0 0% 100% / 0.55), hsl(0 0% 100% / 0));
+		background: linear-gradient(
+			to right,
+			hsl(var(--primary-foreground) / 0.55),
+			hsl(var(--primary-foreground) / 0)
+		);
 		border-radius: 0.42rem 0 0 0.42rem;
 	}
 	.clip__ramp--in::after {
@@ -1043,7 +925,11 @@
 	}
 	.clip__ramp--out {
 		right: 0;
-		background: linear-gradient(to left, hsl(0 0% 100% / 0.55), hsl(0 0% 100% / 0));
+		background: linear-gradient(
+			to left,
+			hsl(var(--primary-foreground) / 0.55),
+			hsl(var(--primary-foreground) / 0)
+		);
 		border-radius: 0 0.42rem 0.42rem 0;
 	}
 	.clip__ramp--out::after {

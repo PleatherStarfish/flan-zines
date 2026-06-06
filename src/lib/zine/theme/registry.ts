@@ -1,4 +1,5 @@
 import type { Theme, ThemeColors } from '../schema/theme';
+import { fontPairById } from './fonts';
 
 // Curated theme registries (data-model.md §7). Palettes and font pairs are KEYS the
 // document stores; the renderer resolves them to CSS variables. Each palette is
@@ -61,48 +62,14 @@ export const PALETTES: Palette[] = [
 	}
 ];
 
-export interface FontPair {
-	id: string;
-	label: string;
-	heading: string;
-	body: string;
-}
-
-export const FONT_PAIRS: FontPair[] = [
-	{
-		id: 'editorial',
-		label: 'Editorial',
-		heading: 'ui-serif, Georgia, "Times New Roman", serif',
-		body: 'ui-sans-serif, system-ui, sans-serif'
-	},
-	{
-		id: 'classic',
-		label: 'Classic',
-		heading: 'Georgia, "Times New Roman", serif',
-		body: 'Georgia, "Times New Roman", serif'
-	},
-	{
-		id: 'bold',
-		label: 'Bold',
-		heading: 'ui-sans-serif, system-ui, sans-serif',
-		body: 'ui-sans-serif, system-ui, sans-serif'
-	},
-	{
-		id: 'mono',
-		label: 'Mono',
-		heading: 'ui-monospace, "SFMono-Regular", monospace',
-		body: 'ui-sans-serif, system-ui, sans-serif'
-	}
-];
+// Fonts live in ./fonts (curated families + pairs, custom resolution). Re-exported here so
+// existing `$lib/zine/theme/registry` import sites keep working.
+export * from './fonts';
 
 export const DEFAULT_PALETTE = 'ink';
-export const DEFAULT_FONT_PAIR = 'editorial';
 
 export function paletteById(id: string | undefined): Palette {
 	return PALETTES.find((p) => p.id === id) ?? PALETTES[0];
-}
-export function fontPairById(id: string | undefined): FontPair {
-	return FONT_PAIRS.find((f) => f.id === id) ?? FONT_PAIRS[0];
 }
 
 /**

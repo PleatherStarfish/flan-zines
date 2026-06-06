@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-	DEFAULT_WAYPOINTS,
-	PathParamsSchema,
-	pathTransform,
-	samplePath,
-	type Waypoint
-} from './path';
+import { DEFAULT_WAYPOINTS, PathParamsSchema, type Waypoint } from './path';
+import { pathTransform, samplePath } from './path-runtime';
 
 const wp = (at: number, x: number, y: number, ease: Waypoint['ease'] = 'linear'): Waypoint => ({
 	at,
@@ -76,13 +71,30 @@ describe('PathParamsSchema', () => {
 		expect(parsed.waypoints[0]).toMatchObject({ scale: 1, rotate: 0, ease: 'smooth' });
 	});
 
-	it('rejects out-of-order waypoints and too-short paths', () => {
+	it('rejects out-of-order, duplicate, too-long, and too-short paths', () => {
 		expect(
 			PathParamsSchema.safeParse({
 				waypoints: [
 					{ at: 0.8, x: 0, y: 0 },
 					{ at: 0.2, x: 1, y: 1 }
 				]
+			}).success
+		).toBe(false);
+		expect(
+			PathParamsSchema.safeParse({
+				waypoints: [
+					{ at: 0, x: 0, y: 0 },
+					{ at: 0, x: 1, y: 1 }
+				]
+			}).success
+		).toBe(false);
+		expect(
+			PathParamsSchema.safeParse({
+				waypoints: Array.from({ length: 13 }, (_, i) => ({
+					at: i / 12,
+					x: i,
+					y: i
+				}))
 			}).success
 		).toBe(false);
 		expect(PathParamsSchema.safeParse({ waypoints: [{ at: 0, x: 0, y: 0 }] }).success).toBe(false);

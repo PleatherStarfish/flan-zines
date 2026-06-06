@@ -12,6 +12,7 @@
 
 {#if !first}{text}{:else if first.type === 'bold'}<strong><Self marks={rest} {text} /></strong
 	>{:else if first.type === 'italic'}<em><Self marks={rest} {text} /></em
+	>{:else if first.type === 'underline'}<u><Self marks={rest} {text} /></u
 	>{:else if first.type === 'link'}<a
 		href={first.attrs.href}
 		target={first.attrs.target}

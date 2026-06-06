@@ -1,11 +1,48 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { render } from '@testing-library/svelte';
 import ZineRenderer from './ZineRenderer.svelte';
 import { seriousAxeViolations } from './axe-helper';
 import { parseDocument } from '../schema/migrate';
 import { sampleZineMeta, sampleZineRaw } from '../fixtures';
 import type { ZineDocument } from '../schema/document';
+
+let originalGetContext: typeof HTMLCanvasElement.prototype.getContext;
+
+beforeAll(() => {
+	originalGetContext = HTMLCanvasElement.prototype.getContext;
+	const gradient = { addColorStop: () => {} };
+	const context = {
+		clearRect: () => {},
+		createRadialGradient: () => gradient,
+		fillRect: () => {},
+		beginPath: () => {},
+		arc: () => {},
+		fill: () => {},
+		stroke: () => {},
+		moveTo: () => {},
+		lineTo: () => {},
+		bezierCurveTo: () => {},
+		closePath: () => {},
+		save: () => {},
+		restore: () => {},
+		translate: () => {},
+		rotate: () => {},
+		scale: () => {},
+		drawImage: () => {},
+		globalAlpha: 1,
+		fillStyle: '',
+		lineCap: '',
+		lineWidth: 1,
+		strokeStyle: ''
+	} as unknown as CanvasRenderingContext2D;
+	HTMLCanvasElement.prototype.getContext = ((contextId: string) =>
+		contextId === '2d' ? context : null) as typeof HTMLCanvasElement.prototype.getContext;
+});
+
+afterAll(() => {
+	HTMLCanvasElement.prototype.getContext = originalGetContext;
+});
 
 function renderFixture() {
 	const document = parseDocument(sampleZineRaw);

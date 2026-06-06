@@ -3,6 +3,7 @@
 	import { setBlockDecoration } from '$lib/zine/render/context';
 	import ZineRenderer from '$lib/zine/render/ZineRenderer.svelte';
 	import { themeVars } from '$lib/zine/theme/registry';
+	import { loadThemeFonts } from '$lib/zine/theme/font-loader';
 	import type { EditorStore } from './store.svelte';
 	import Toolbar from './Toolbar.svelte';
 	import StoryMap from './StoryMap.svelte';
@@ -12,6 +13,11 @@
 
 	// Theme the whole preview surface so it matches the zine (no white bars around it).
 	const previewStyle = $derived(themeVars(store.doc.theme));
+	// Load the web fonts the current theme uses so every editor preview renders in the real
+	// fonts (the picker loads the full set for its tiles).
+	$effect(() => {
+		loadThemeFonts(store.doc.theme);
+	});
 	let surface = $state<'map' | 'scene'>('map');
 	let activeSceneId = $state<string | null>(null);
 
@@ -65,10 +71,10 @@
 		← Back to editor
 	</button>
 {:else}
-	<div class="flex h-screen flex-col bg-muted">
+	<div class="editor-workbench">
 		<Toolbar {store} {title} />
 
-		<div class="min-h-0 flex-1 overflow-y-auto">
+		<div class="editor-workbench__surface">
 			{#if surface === 'scene' && activeSceneId}
 				<SceneEditor {store} sceneId={activeSceneId} onBack={backToMap} />
 			{:else}
@@ -93,21 +99,36 @@
 		top: 1rem;
 		left: 1rem;
 		z-index: 51;
-		border-radius: 999px;
-		border: 1px solid hsl(var(--border));
-		background: hsl(var(--background) / 0.92);
-		box-shadow: 0 2px 10px hsl(var(--foreground) / 0.16);
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		box-shadow: 0.16rem 0.16rem 0 var(--pixel-ink);
 		padding: 0.5rem 0.95rem;
 		font-size: 0.88rem;
-		font-weight: 650;
+		font-weight: 850;
 		color: hsl(var(--foreground));
-		backdrop-filter: blur(6px);
 	}
 	.reader-preview__back:hover {
-		background: hsl(var(--background));
+		background: var(--pixel-yellow);
 	}
 	.reader-preview__back:focus-visible {
-		outline: 2px solid hsl(var(--primary));
+		outline: 3px solid var(--pixel-cyan);
 		outline-offset: 2px;
+	}
+	.editor-workbench {
+		display: flex;
+		height: 100vh;
+		min-height: 100vh;
+		flex-direction: column;
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.055) 1px, transparent 1px),
+			linear-gradient(oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px), var(--pixel-paper);
+		background-size: 32px 32px;
+		color: hsl(var(--foreground));
+	}
+	.editor-workbench__surface {
+		min-height: 0;
+		flex: 1 1 auto;
+		overflow-y: auto;
 	}
 </style>
