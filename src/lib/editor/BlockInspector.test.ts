@@ -96,6 +96,8 @@ const headingText = (store: EditorStore) =>
 const richTextDoc = (store: EditorStore) =>
 	(store.doc.acts[0].scenes[0].elements[0].block.props as { doc: RichTextDoc }).doc;
 
+const blockStyle = (store: EditorStore) => store.doc.acts[0].scenes[0].elements[0].block.style;
+
 beforeEach(() => localStorage.clear());
 
 describe('BlockInspector', () => {
@@ -118,6 +120,41 @@ describe('BlockInspector', () => {
 		// heading text is required → rejected → document unchanged + an error is shown
 		expect(headingText(store)).toBe('Hi');
 		expect(getByRole('alert')).toBeTruthy();
+		store.dispose();
+	});
+
+	it('makes text readability backgrounds an explicit block style choice', async () => {
+		const store = setup();
+		const { getByLabelText, getByRole } = render(BlockInspector, {
+			props: { store, element: store.doc.acts[0].scenes[0].elements[0] }
+		});
+
+		expect(blockStyle(store)?.textBackdrop).toBeUndefined();
+
+		await fireEvent.click(getByRole('button', { name: 'Box' }));
+		expect(blockStyle(store)?.textBackdrop).toEqual({
+			shape: 'box',
+			color: '#14181f',
+			opacity: 0.72
+		});
+
+		await fireEvent.input(getByRole('slider', { name: 'Readability background opacity' }), {
+			target: { value: '0.4' }
+		});
+		await fireEvent.input(getByLabelText('Readability background color'), {
+			target: { value: '#fff3c4' }
+		});
+		expect(blockStyle(store)?.textBackdrop).toEqual({
+			shape: 'box',
+			color: '#fff3c4',
+			opacity: 0.4
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'Circle' }));
+		expect(blockStyle(store)?.textBackdrop?.shape).toBe('circle');
+
+		await fireEvent.click(getByRole('button', { name: 'None' }));
+		expect(blockStyle(store)?.textBackdrop).toBeUndefined();
 		store.dispose();
 	});
 

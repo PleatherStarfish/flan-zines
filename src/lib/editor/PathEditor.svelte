@@ -9,6 +9,7 @@
 		type PathEase,
 		type Waypoint
 	} from '$lib/zine/animations/path';
+	import { pathSvgD, retimeWaypointsByDistance } from '$lib/zine/animations/path-geometry';
 	import { pathTransform, samplePath } from '$lib/zine/animations/path-runtime';
 	import type { Element, Scene, ZineDocument } from '$lib/zine/schema/document';
 	import type { EditorStore } from './store.svelte';
@@ -46,7 +47,17 @@
 	let dragElementId: string | null = null;
 	let pathStatus = $state('');
 
-	const freeElements = $derived(scene.elements.filter((element) => element.placement === 'free'));
+	const liveDocument = $derived(store.doc ?? document);
+	const liveScene = $derived.by(() => {
+		for (const act of liveDocument.acts) {
+			const candidate = act.scenes.find((item) => item.id === scene.id);
+			if (candidate) return candidate;
+		}
+		return scene;
+	});
+	const freeElements = $derived(
+		liveScene.elements.filter((element) => element.placement === 'free')
+	);
 	const element = $derived<Element | undefined>(
 		freeElements.find((candidate) => candidate.id === activeId) ?? freeElements[0]
 	);
@@ -56,22 +67,22 @@
 		return Array.isArray(raw) && raw.length >= 2 ? (raw as Waypoint[]) : DEFAULT_WAYPOINTS;
 	}
 	const waypoints = $derived(draft ?? waypointsOf(element));
-	const canAddPoint = $derived(waypointsOf(element).length < MAX_PATH_WAYPOINTS);
+	const canAddPoint = $derived(waypoints.length < MAX_PATH_WAYPOINTS);
 
 	// The backdrop = the scene with free sprites stripped, so ZineRenderer draws only the
 	// scenery/content (we draw the sprites ourselves, interactively, on top).
 	const backdropDoc = $derived<ZineDocument>({
-		...document,
-		acts: document.acts.map((act) => ({
+		...liveDocument,
+		acts: liveDocument.acts.map((act) => ({
 			...act,
 			scenes: act.scenes.map((candidate) =>
-				candidate.id === scene.id
+				candidate.id === liveScene.id
 					? { ...candidate, elements: candidate.elements.filter((el) => el.placement !== 'free') }
 					: candidate
 			)
 		}))
 	});
-	const backdropProgress = $derived({ [scene.id]: scrub });
+	const backdropProgress = $derived({ [liveScene.id]: scrub });
 
 	const EASES: { value: PathEase; label: string }[] = [
 		{ value: 'linear', label: 'Straight' },
@@ -102,16 +113,25 @@
 		if (elementId) store.setElementPath(elementId, next);
 	}
 
-	function selectedIndexAfter(list: Waypoint[], point: Waypoint): number {
-		const index = list.indexOf(point);
-		return index >= 0 ? index : Math.max(0, Math.min(selected, list.length - 1));
-	}
-
 	function nearestWaypoint(list: Waypoint[], at: number): Waypoint {
 		return list.reduce(
 			(best, w) => (Math.abs(w.at - at) < Math.abs(best.at - at) ? w : best),
 			list[0]
 		);
+	}
+
+	function appendAtEnd(x: number, y: number): Waypoint[] {
+		const list = waypointsOf(element).map((w) => ({ ...w }));
+		if (list.length >= MAX_PATH_WAYPOINTS) {
+			pathStatus = `This path already has ${MAX_PATH_WAYPOINTS} points. Move or delete one to add another.`;
+			return list;
+		}
+		const neighbour = list[list.length - 1] ?? DEFAULT_WAYPOINTS[DEFAULT_WAYPOINTS.length - 1];
+		const point: Waypoint = { ...neighbour, at: 1, x, y };
+		const next = retimeWaypointsByDistance([...list, point]);
+		selected = next.length - 1;
+		pathStatus = `Added point ${selected + 1} at the end. Pacing was smoothed by distance.`;
+		return next;
 	}
 
 	function addAt(at: number, x: number, y: number): Waypoint[] {
@@ -123,8 +143,12 @@
 		const targetAt = safeAt(at, list);
 		const neighbour = nearestWaypoint(list, targetAt);
 		const point: Waypoint = { ...neighbour, at: targetAt, x, y };
-		const next = [...list, point].sort((a, b) => a.at - b.at);
-		selected = selectedIndexAfter(next, point);
+		const insertAt = list.findIndex((w) => targetAt < w.at);
+		const next =
+			insertAt === -1
+				? [...list, point]
+				: [...list.slice(0, insertAt), point, ...list.slice(insertAt)];
+		selected = insertAt === -1 ? next.length - 1 : insertAt;
 		pathStatus =
 			Math.abs(targetAt - round(clamp(at, 0, 1))) < 0.001
 				? `Added point ${selected + 1}.`
@@ -136,19 +160,30 @@
 		const list = waypointsOf(element).map((w) => ({ ...w }));
 		if (!list[selected]) return;
 		if (key === 'at') {
-			const moving = { ...list[selected], at: Number(value) };
-			list.splice(selected, 1);
-			moving.at = safeAt(moving.at, list);
-			const next = [...list, moving].sort((a, b) => a.at - b.at);
-			selected = selectedIndexAfter(next, moving);
-			commit(element?.id, next);
+			list[selected] = {
+				...list[selected],
+				at: safeAtForIndex(Number(value), list, selected)
+			};
+			commit(element?.id, list);
 			return;
 		}
 		list[selected] = { ...list[selected], [key]: value };
-		commit(element?.id, list);
+		const next = key === 'x' || key === 'y' ? retimeWaypointsByDistance(list) : list;
+		commit(element?.id, next);
 	}
 
-	function addPointHere(): void {
+	function appendPointAtPreview(): void {
+		if (!element) return;
+		if (!canAddPoint) {
+			pathStatus = `This path already has ${MAX_PATH_WAYPOINTS} points. Move or delete one to add another.`;
+			return;
+		}
+		const sample = samplePath(waypoints, scrub);
+		const next = appendAtEnd(round(sample.x), round(sample.y));
+		commit(element.id, next);
+	}
+
+	function insertPointAtScroll(): void {
 		if (!element) return;
 		if (!canAddPoint) {
 			pathStatus = `This path already has ${MAX_PATH_WAYPOINTS} points. Move or delete one to add another.`;
@@ -159,6 +194,14 @@
 		commit(element.id, next);
 	}
 
+	function smoothPacing(): void {
+		if (!element) return;
+		const next = retimeWaypointsByDistance(waypointsOf(element));
+		selected = Math.min(selected, next.length - 1);
+		commit(element.id, next);
+		pathStatus = 'Smoothed timing so longer moves get more scroll time.';
+	}
+
 	function deleteSelected(): void {
 		deleteAt(selected);
 	}
@@ -166,10 +209,7 @@
 	function deleteAt(index: number): void {
 		const list = waypointsOf(element);
 		if (list.length <= 2) return; // a path needs at least two points
-		commit(
-			element?.id,
-			list.filter((_, i) => i !== index)
-		);
+		commit(element?.id, retimeWaypointsByDistance(list.filter((_, i) => i !== index)));
 		selected = Math.max(0, index - 1);
 		pathStatus = `Deleted point ${index + 1}.`;
 	}
@@ -201,7 +241,7 @@
 			const list = (draft ?? waypointsOf(element)).map((w) => ({ ...w }));
 			if (!list[index]) return;
 			list[index] = { ...list[index], x, y };
-			draft = list;
+			draft = retimeWaypointsByDistance(list);
 		};
 		const end = (e?: PointerEvent) => {
 			if (e && e.pointerId !== pointerId) return;
@@ -249,9 +289,8 @@
 		beginDrag(event, index, event.currentTarget as HTMLElement, element.id);
 	}
 
-	// Click (or click-drag) anywhere on the empty stage to ADD a point there at the current
-	// scroll moment — the easy, arbitrary "place a point" gesture. Markers stop propagation, so
-	// moving existing points stays explicit: drag the numbered dots.
+	// Click (or click-drag) anywhere on the empty stage to append a new route stop. Markers
+	// stop propagation, so moving existing points stays explicit: drag the numbered dots.
 	function onStageDown(event: PointerEvent): void {
 		if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
 		if (!element || !stageEl) return;
@@ -263,7 +302,7 @@
 		}
 		const point = stagePoint(event);
 		if (!point) return;
-		const next = addAt(scrub, point.x, point.y); // sets `selected` to the new point
+		const next = appendAtEnd(point.x, point.y); // sets `selected` to the new point
 		draft = next;
 		beginDrag(event, selected, stageEl, element.id, next);
 	}
@@ -279,7 +318,7 @@
 		else if (event.key === 'ArrowDown') w.y = clamp(w.y + step, 0, 100);
 		else return;
 		event.preventDefault();
-		commit(element?.id, list);
+		commit(element?.id, retimeWaypointsByDistance(list));
 		pathStatus = `Moved point ${selected + 1}.`;
 	}
 
@@ -296,7 +335,7 @@
 	function onStageKeydown(event: KeyboardEvent): void {
 		if (event.key === 'Enter' || event.key === ' ') {
 			event.preventDefault();
-			addPointHere();
+			appendPointAtPreview();
 			return;
 		}
 		if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -323,6 +362,14 @@
 			}
 		}
 		return preferred;
+	}
+
+	function safeAtForIndex(at: number, list: Waypoint[], index: number): number {
+		const current = list[index]?.at ?? 0;
+		const min = index === 0 ? 0 : round((list[index - 1]?.at ?? 0) + 0.01);
+		const max = index === list.length - 1 ? 1 : round((list[index + 1]?.at ?? 1) - 0.01);
+		if (min > max) return current;
+		return round(clamp(at, min, max));
 	}
 
 	function switchElement(id: string): void {
@@ -370,16 +417,8 @@
 		if (selected >= waypoints.length) selected = Math.max(0, waypoints.length - 1);
 	});
 
-	// The path as an SVG polyline sampled finely (so eased/arc segments curve).
-	const pathD = $derived.by(() => {
-		const steps = 48;
-		let d = '';
-		for (let i = 0; i <= steps; i++) {
-			const s = samplePath(waypoints, i / steps);
-			d += `${i === 0 ? 'M' : 'L'}${s.x.toFixed(2)},${s.y.toFixed(2)} `;
-		}
-		return d.trim();
-	});
+	// The path as an SVG polyline sampled by segment, including every authored point exactly.
+	const pathD = $derived(pathSvgD(waypoints));
 	const ghost = $derived(samplePath(waypoints, scrub));
 
 	onMount(() => {
@@ -430,6 +469,25 @@
 				</div>
 			{/if}
 
+			<div class="path-tools" aria-describedby="path-editor-hint">
+				<button type="button" disabled={!canAddPoint} onclick={appendPointAtPreview}>
+					+ Point
+				</button>
+				<button type="button" onclick={smoothPacing}>Smooth pacing</button>
+				<button type="button" disabled={!canAddPoint} onclick={insertPointAtScroll}>
+					Insert at scroll
+				</button>
+				<button
+					type="button"
+					class="danger"
+					disabled={waypoints.length <= 2}
+					onclick={deleteSelected}
+				>
+					Delete point
+				</button>
+				<span>Click the stage to append the next stop.</span>
+			</div>
+
 			<!-- The stage: a backdrop (real renderer) + the sprite ghost + the path overlay.
 			     `container-type: size` so the sprite's cqw/cqh resolve here exactly as they do on
 			     the published page. Click the surface to drop a point; drag the dots to move them. -->
@@ -438,7 +496,7 @@
 				bind:this={stageEl}
 				role="button"
 				tabindex="0"
-				aria-label="Path stage. Press Enter to add a point at the current reader scroll, arrow keys to move the selected point, Delete to remove it."
+				aria-label="Path stage. Click or press Enter to append a point, arrow keys to move the selected point, Delete to remove it."
 				onpointerdown={onStageDown}
 				onkeydown={onStageKeydown}
 			>
@@ -506,8 +564,8 @@
 				<output>{Math.round(scrub * 100)}%</output>
 			</label>
 			<p class="hint" id="path-editor-hint">
-				Scrub the scroll, then click the stage or press Enter to place a point. Drag or use arrow
-				keys to move it; Delete removes it.
+				Scrub to preview the move. Click the stage or press Enter to append the next stop. Drag dots
+				or use arrow keys to move them; Delete removes the selected point.
 			</p>
 			<p class="status" aria-live="polite">
 				{pathStatus || `${waypoints.length} of ${MAX_PATH_WAYPOINTS} points used.`}
@@ -516,19 +574,6 @@
 			<div class="points">
 				<div class="points__head">
 					<span>Point {selected + 1} of {waypoints.length}</span>
-					<div>
-						<button type="button" disabled={!canAddPoint} onclick={addPointHere}>
-							+ Point here
-						</button>
-						<button
-							type="button"
-							class="danger"
-							disabled={waypoints.length <= 2}
-							onclick={deleteSelected}
-						>
-							Delete
-						</button>
-					</div>
 				</div>
 				{#if waypoints[selected]}
 					<label class="point-when">
@@ -600,7 +645,7 @@
 		position: relative;
 		display: grid;
 		gap: 0.7rem;
-		width: min(56rem, 100%);
+		width: min(72rem, 100%);
 		max-height: calc(100vh - 3rem);
 		overflow-y: auto;
 		border: 2px solid var(--pixel-ink);
@@ -650,10 +695,55 @@
 	.switcher button[aria-pressed='true'] {
 		background: var(--pixel-green);
 	}
+	.path-tools {
+		position: sticky;
+		top: -1rem;
+		z-index: 8;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.45rem;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		box-shadow: var(--pixel-shadow-sm);
+		padding: 0.55rem 0.65rem;
+	}
+	.path-tools button {
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-yellow);
+		box-shadow: 0.1rem 0.1rem 0 var(--pixel-ink);
+		padding: 0.38rem 0.62rem;
+		font-size: 0.78rem;
+		font-weight: 900;
+		color: var(--pixel-ink);
+	}
+	.path-tools button:nth-of-type(2) {
+		background: var(--pixel-cyan);
+	}
+	.path-tools button:nth-of-type(3) {
+		background: var(--pixel-paper);
+	}
+	.path-tools .danger {
+		background: var(--pixel-magenta);
+		color: hsl(var(--primary-foreground));
+	}
+	.path-tools button:disabled {
+		opacity: 0.42;
+	}
+	.path-tools span {
+		min-width: min(100%, 18rem);
+		font-size: 0.72rem;
+		font-weight: 760;
+		color: hsl(var(--muted-foreground));
+	}
 	.stage {
 		position: relative;
 		container-type: size;
 		aspect-ratio: 16 / 10;
+		height: clamp(18rem, 52vh, 34rem);
+		width: 100%;
 		overflow: hidden;
 		border: 3px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
@@ -794,26 +884,6 @@
 		justify-content: space-between;
 		font-size: 0.8rem;
 		font-weight: 750;
-	}
-	.points__head div {
-		display: flex;
-		gap: 0.4rem;
-	}
-	.points__head button {
-		border: 2px solid var(--pixel-ink);
-		border-radius: var(--pixel-radius);
-		background: var(--pixel-paper);
-		box-shadow: 0.1rem 0.1rem 0 var(--pixel-ink);
-		padding: 0.32rem 0.55rem;
-		font-size: 0.78rem;
-		font-weight: 850;
-		color: hsl(var(--foreground));
-	}
-	.points__head .danger {
-		color: hsl(var(--destructive));
-	}
-	.points__head button:disabled {
-		opacity: 0.4;
 	}
 	.point-when {
 		display: grid;

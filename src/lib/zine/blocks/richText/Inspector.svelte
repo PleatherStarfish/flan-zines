@@ -354,7 +354,7 @@
 
 	function docToPlainText(doc: RichTextDoc): string {
 		return doc.content
-			.map((node, blockIndex) => {
+			.map((node) => {
 				if (node.type === 'paragraph') return inlineToPlain(node.content);
 				if (node.type === 'heading') return inlineToPlain(node.content);
 				if (node.type === 'blockquote') {
@@ -385,7 +385,6 @@
 
 {#if open}
 	<div class="rich-modal" role="presentation">
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="rich-modal__panel"
 			role="dialog"
@@ -400,7 +399,10 @@
 					<p>Focused writing</p>
 					<h2 id="rich-editor-title">Edit text</h2>
 				</div>
-				<button type="button" class="rich-modal__ghost" onclick={closeEditor}>Cancel</button>
+				<div class="rich-modal__actions">
+					<button type="button" class="rich-modal__ghost" onclick={closeEditor}>Cancel</button>
+					<button type="button" class="rich-modal__save" onclick={saveEditor}>Save text</button>
+				</div>
 			</header>
 
 			<div class="rich-toolbar" aria-label="Text formatting">
@@ -501,7 +503,6 @@
 				</div>
 			{/if}
 
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="rich-editor"
 				bind:this={editorEl}
@@ -515,11 +516,6 @@
 				oninput={() => (savedRange = selectionRangeInEditor())}
 				onpaste={onPaste}
 			></div>
-
-			<footer class="rich-modal__footer">
-				<p>Saved text is validated as safe zine content. No raw HTML is published.</p>
-				<button type="button" class="rich-modal__save" onclick={saveEditor}>Save text</button>
-			</footer>
 		</div>
 	</div>
 {/if}
@@ -575,9 +571,10 @@
 	}
 	.rich-modal__panel {
 		display: grid;
-		grid-template-rows: max-content max-content max-content minmax(16rem, 1fr) max-content;
-		width: min(58rem, 100%);
-		max-height: min(44rem, calc(100dvh - 2rem));
+		grid-template-rows: max-content max-content max-content minmax(0, 1fr);
+		width: min(72rem, calc(100vw - 2rem));
+		height: min(52rem, calc(100dvh - 2rem));
+		max-height: calc(100dvh - 2rem);
 		overflow: hidden;
 		border: 3px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
@@ -587,15 +584,20 @@
 		background-size: 14px 14px;
 		box-shadow: 0.45rem 0.45rem 0 var(--pixel-ink);
 	}
-	.rich-modal__header,
-	.rich-modal__footer {
+	.rich-modal__header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
 		border-bottom: 2px solid var(--pixel-ink);
 		background: oklch(0.98 0.018 82);
-		padding: 0.85rem 1rem;
+		padding: 0.7rem 0.85rem;
+	}
+	.rich-modal__actions {
+		display: flex;
+		flex: 0 0 auto;
+		align-items: center;
+		gap: 0.45rem;
 	}
 	.rich-modal__header p {
 		margin: 0;
@@ -618,7 +620,7 @@
 		gap: 0.38rem;
 		border-bottom: 2px solid var(--pixel-ink);
 		background: oklch(0.9 0.04 82);
-		padding: 0.65rem 1rem;
+		padding: 0.55rem 0.85rem;
 	}
 	.rich-toolbar button {
 		min-width: 2.2rem;
@@ -626,6 +628,7 @@
 		font-size: 0.8rem;
 	}
 	.rich-link-panel {
+		grid-row: 3;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) max-content;
 		align-items: end;
@@ -668,8 +671,10 @@
 		font-weight: 800;
 	}
 	.rich-editor {
+		grid-row: 4;
 		overflow: auto;
-		margin: 1rem;
+		min-height: 0;
+		margin: 0.7rem;
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
 		background: oklch(0.995 0.01 82);
@@ -711,16 +716,6 @@
 		background: oklch(0.98 0.035 340);
 		padding: 0.75rem 0.9rem;
 	}
-	.rich-modal__footer {
-		border-top: 2px solid var(--pixel-ink);
-		border-bottom: 0;
-	}
-	.rich-modal__footer p {
-		margin: 0;
-		color: hsl(var(--muted-foreground));
-		font-size: 0.76rem;
-		line-height: 1.35;
-	}
 	.rich-modal__ghost {
 		padding: 0.48rem 0.7rem;
 	}
@@ -742,11 +737,11 @@
 		.rich-modal__panel {
 			min-height: 100dvh;
 			max-height: 100dvh;
+			height: 100dvh;
 			width: 100%;
 			box-shadow: none;
 		}
 		.rich-link-panel,
-		.rich-modal__footer,
 		.rich-modal__header {
 			align-items: stretch;
 			flex-direction: column;

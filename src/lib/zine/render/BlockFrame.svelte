@@ -31,6 +31,16 @@
 	const decoration = getBlockDecoration();
 	const editable = $derived(Boolean(decoration && blockId && decoration().enabled));
 	const selected = $derived(decoration && blockId ? decoration().selectedId === blockId : false);
+	const textBackdrop = $derived(style?.textBackdrop);
+	const frameStyle = $derived.by(() => {
+		const parts: string[] = [];
+		if (timelineStyle) parts.push(timelineStyle);
+		if (textBackdrop) {
+			parts.push(`--zine-text-backdrop-color:${textBackdrop.color}`);
+			parts.push(`--zine-text-backdrop-opacity:${Math.round(textBackdrop.opacity * 100)}%`);
+		}
+		return parts.length ? parts.join(';') : undefined;
+	});
 </script>
 
 {#if editable && decoration && blockId}
@@ -50,7 +60,8 @@
 			class:is-timeline-active={timelineActive}
 			data-align={style?.align}
 			data-animation={animation?.type}
-			style={timelineStyle}
+			data-text-backdrop={textBackdrop?.shape}
+			style={frameStyle}
 		>
 			{@render children()}
 		</div>
@@ -61,7 +72,8 @@
 		class:is-timeline-active={timelineActive}
 		data-align={style?.align}
 		data-animation={animation?.type}
-		style={timelineStyle}
+		data-text-backdrop={textBackdrop?.shape}
+		style={frameStyle}
 	>
 		{@render children()}
 	</div>

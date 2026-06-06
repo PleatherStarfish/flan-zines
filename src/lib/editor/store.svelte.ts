@@ -17,7 +17,7 @@ import type {
 } from '$lib/zine/schema/document';
 import { PathParamsSchema, type Waypoint } from '$lib/zine/animations/path';
 import { parseDocument } from '$lib/zine/schema/migrate';
-import type { BlockStyle, SectionKind } from '$lib/zine/schema/theme';
+import { BlockStyleSchema, type BlockStyle, type SectionKind } from '$lib/zine/schema/theme';
 import type { Theme, ThemeColors, ThemeRole } from '$lib/zine/schema/theme';
 import { resolveThemeColors, themeSwatches } from '$lib/zine/theme/registry';
 import type { AnimationDescriptor, EffectRef } from '$lib/zine/schema/animation';
@@ -36,14 +36,21 @@ type StarterBlock = {
 	range?: Element['range'];
 };
 
+// A decorative emoji "sticker" — a richText paragraph, NOT a heading, so playful scenery
+// (clouds, platforms, the character) never pollutes the document's heading outline
+// (a11y invariant: content headings are real h2+ section titles). Rendered large via CSS.
+const sticker = (text: string, extra: Partial<StarterBlock> = {}): StarterBlock => ({
+	type: 'richText',
+	props: {
+		doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
+	},
+	...extra
+});
+
 // A platform sits at a point along the side-scroll track (range.start → its left position);
 // the reader scrolls and the stage pans to reveal them left-to-right.
-const platform = (at: number): StarterBlock => ({
-	type: 'heading',
-	props: { text: '🟩🟩🟩', level: 3 },
-	track: 'media',
-	range: { start: at, end: Math.min(1, at + 0.08) }
-});
+const platform = (at: number): StarterBlock =>
+	sticker('🟩🟩🟩', { track: 'media', range: { start: at, end: Math.min(1, at + 0.08) } });
 // The character: a free sprite that jumps (arc) across the screen as the reader scrolls.
 const jumpWaypoints: Waypoint[] = [
 	{ at: 0, x: 18, y: 72, scale: 1, rotate: 0, ease: 'smooth' },
@@ -63,18 +70,16 @@ const STARTER_SCENES: Record<SceneType, StarterBlock[]> = {
 	// A starter platformer: clouds + platforms along the track, and a free character that
 	// jumps across the screen on a path. Open the character's clip to fine-tune the jumps.
 	sidescroll: [
-		{ type: 'heading', props: { text: '☁️      ☁️', level: 2 }, track: 'background' },
+		sticker('☁️      ☁️', { track: 'background' }),
 		platform(0.12),
 		platform(0.46),
 		platform(0.8),
-		{
-			type: 'heading',
-			props: { text: '🧍', level: 2 },
+		sticker('🧍', {
 			track: 'media',
 			placement: 'free',
 			range: { start: 0, end: 1 },
 			motion: { type: 'path', params: { waypoints: jumpWaypoints } }
-		}
+		})
 	],
 	data: [{ type: 'heading', props: { text: 'What changes?', level: 2 } }, { type: 'richText' }]
 };
@@ -409,9 +414,13 @@ export class EditorStore {
 		});
 	}
 	updateElementStyle(elementId: string, style: BlockStyle): void {
+		const parsed = BlockStyleSchema.safeParse(style);
+		if (!parsed.success) return;
 		this.mutate((draft) => {
 			const element = findElement(draft, elementId)?.element;
-			if (element) element.block.style = style;
+			if (!element) return;
+			if (Object.keys(parsed.data).length) element.block.style = parsed.data;
+			else delete element.block.style;
 		});
 	}
 	updateElementRange(elementId: string, range: Element['range']): void {
@@ -451,8 +460,15 @@ export class EditorStore {
 		this.mutate((draft) => {
 			const element = findElement(draft, elementId)?.element;
 			if (!element) return;
-			if (placement === 'free') element.placement = 'free';
-			else delete element.placement;
+			if (placement === 'free') {
+				element.placement = 'free';
+			} else {
+				delete element.placement;
+				// A `path` motion only makes sense for a free sprite (it positions in stage
+				// space). Leaving it on a flow element would render off-stage, so drop it —
+				// placement and a path motion stay consistent.
+				if (element.motion?.type === 'path') delete element.motion;
+			}
 		});
 	}
 	/** Make an element a free sprite that follows `waypoints` on scroll (the `path` motion). */

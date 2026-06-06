@@ -76,16 +76,103 @@ function pathWaypoints(store: EditorStore): Waypoint[] {
 beforeEach(() => localStorage.clear());
 
 describe('PathEditor', () => {
-	it('adds a new point even when the scrubber is on an existing endpoint', async () => {
+	function mockStageRect(stage: HTMLElement): void {
+		stage.getBoundingClientRect = () =>
+			({
+				x: 0,
+				y: 0,
+				left: 0,
+				top: 0,
+				width: 200,
+				height: 100,
+				right: 200,
+				bottom: 100,
+				toJSON: () => ({})
+			}) as DOMRect;
+	}
+
+	function pointerEvent(
+		type: 'pointerdown' | 'pointerup' | 'pointermove',
+		init: { clientX: number; clientY: number; pointerId?: number }
+	): PointerEvent {
+		const event = new MouseEvent(type, {
+			bubbles: true,
+			cancelable: true,
+			button: 0,
+			clientX: init.clientX,
+			clientY: init.clientY
+		}) as PointerEvent;
+		Object.defineProperties(event, {
+			pointerId: { value: init.pointerId ?? 1 },
+			pointerType: { value: 'mouse' },
+			isPrimary: { value: true }
+		});
+		return event;
+	}
+
+	it('appends a new route point from a stage click instead of inserting it mid-path', async () => {
 		const { store, view } = setup();
+		const stage = view.getByRole('button', { name: /Path stage/i });
+		mockStageRect(stage);
+
+		await fireEvent(stage, pointerEvent('pointerdown', { clientX: 100, clientY: 25 }));
+		await fireEvent(stage, pointerEvent('pointerup', { clientX: 100, clientY: 25 }));
+
+		const points = pathWaypoints(store);
+		expect(points).toHaveLength(3);
+		expect(points.map((point) => [point.x, point.y])).toEqual([
+			[10, 60],
+			[90, 60],
+			[50, 25]
+		]);
+		expect(points[0].at).toBe(0);
+		expect(points[1].at).toBeGreaterThan(0);
+		expect(points[1].at).toBeLessThan(1);
+		expect(points[2].at).toBe(1);
+		store.dispose();
+		view.unmount();
+	});
+
+	it('clamps timing edits between neighbours without reordering the route', async () => {
+		const { store, view } = setup();
+		const stage = view.getByRole('button', { name: /Path stage/i });
+		mockStageRect(stage);
+
+		await fireEvent(stage, pointerEvent('pointerdown', { clientX: 100, clientY: 25 }));
+		await fireEvent(stage, pointerEvent('pointerup', { clientX: 100, clientY: 25 }));
+		await fireEvent.click(view.getByRole('button', { name: /Point 2 at/i }));
+		await fireEvent.input(view.getByRole('slider', { name: /^When \(scroll\)/ }), {
+			target: { value: '1' }
+		});
+
+		const points = pathWaypoints(store);
+		expect(points.map((point) => [point.x, point.y])).toEqual([
+			[10, 60],
+			[90, 60],
+			[50, 25]
+		]);
+		expect(points[0].at).toBeLessThan(points[1].at);
+		expect(points[1].at).toBeLessThan(points[2].at);
+		expect(points[1].at).toBeLessThanOrEqual(0.99);
+		store.dispose();
+		view.unmount();
+	});
+
+	it('does not redraw the route line into a different order while scrubbing preview', async () => {
+		const { store, view } = setup();
+		const stage = view.getByRole('button', { name: /Path stage/i });
+		mockStageRect(stage);
+
+		await fireEvent(stage, pointerEvent('pointerdown', { clientX: 100, clientY: 25 }));
+		await fireEvent(stage, pointerEvent('pointerup', { clientX: 100, clientY: 25 }));
+		const route = view.container.querySelector('.route');
+		const before = route?.getAttribute('d');
 
 		await fireEvent.input(view.getByRole('slider', { name: 'Reader scroll' }), {
-			target: { value: '0' }
+			target: { value: '0.75' }
 		});
-		await fireEvent.click(view.getByRole('button', { name: '+ Point here' }));
 
-		expect(pathWaypoints(store).map((point) => point.at)).toEqual([0, 0.01, 1]);
-		expect(pathWaypoints(store)).toHaveLength(3);
+		expect(route?.getAttribute('d')).toBe(before);
 		store.dispose();
 		view.unmount();
 	});

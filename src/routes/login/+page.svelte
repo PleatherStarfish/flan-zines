@@ -60,14 +60,30 @@
 
 		{#if dev}
 			<form method="POST" action="?/devlogin" class="login-card__dev">
-				<button type="submit" class="pixel-button login-card__button">
-					Continue as Riverwild
-				</button>
+				<div class="dev-login-grid">
+					<button
+						type="submit"
+						name="persona"
+						value="student"
+						class="pixel-button login-card__button"
+					>
+						Continue as Riverwild
+					</button>
+					<button
+						type="submit"
+						name="persona"
+						value="teacher"
+						class="pixel-button pixel-button--primary login-card__button"
+					>
+						Continue as Ms. Quill
+					</button>
+				</div>
 				{#if devLoginMessage}
 					<p role="alert" class="login-alert login-alert--error">{devLoginMessage}</p>
 				{/if}
 				<p>
-					Local development only. Uses <code>river@lakeside.test</code>.
+					Local development only. Student: <code>river@lakeside.test</code>. Teacher:
+					<code>quill@lakeside.test</code>.
 				</p>
 			</form>
 		{/if}
@@ -149,6 +165,14 @@
 	.login-card__dev {
 		margin-top: 0.85rem;
 	}
+	.dev-login-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.65rem;
+	}
+	.dev-login-grid .login-card__button {
+		margin-top: 0;
+	}
 	.login-card__dev p {
 		margin: 0.7rem 0 0;
 		color: hsl(var(--muted-foreground));
@@ -216,5 +240,10 @@
 		margin: 1.4rem 0 0;
 		text-align: center;
 		font-size: 0.9rem;
+	}
+	@media (max-width: 560px) {
+		.dev-login-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

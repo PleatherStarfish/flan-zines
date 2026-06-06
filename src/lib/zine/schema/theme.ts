@@ -21,10 +21,6 @@ export const SectionPresentationSchema = z.object({
 export type SectionPresentation = z.infer<typeof SectionPresentationSchema>;
 
 export const BLOCK_ALIGNMENTS = ['left', 'center', 'right'] as const;
-export const BlockStyleSchema = z.object({
-	align: z.enum(BLOCK_ALIGNMENTS).optional()
-});
-export type BlockStyle = z.infer<typeof BlockStyleSchema>;
 
 // Author-controlled values that become inline CSS must be deliberately narrow.
 // Step 2 supports hex colors only; richer palette-token resolution arrives with
@@ -37,6 +33,25 @@ export const HexColorSchema = z
 		message: 'Color must be a hex value like #E4572E.'
 	});
 export type HexColor = z.infer<typeof HexColorSchema>;
+
+export const TEXT_BACKDROP_SHAPES = ['box', 'circle'] as const;
+export const TextBackdropShapeSchema = z.enum(TEXT_BACKDROP_SHAPES);
+export type TextBackdropShape = z.infer<typeof TextBackdropShapeSchema>;
+
+export const TextBackdropSchema = z.object({
+	shape: TextBackdropShapeSchema,
+	color: HexColorSchema,
+	opacity: z.number().min(0).max(1).default(0.72)
+});
+export type TextBackdrop = z.infer<typeof TextBackdropSchema>;
+
+export const BlockStyleSchema = z.object({
+	align: z.enum(BLOCK_ALIGNMENTS).optional(),
+	// Explicit readability treatment for text blocks. Default is absent/transparent.
+	// Rendered tightly around the text content, never as a full-width bar.
+	textBackdrop: TextBackdropSchema.optional()
+});
+export type BlockStyle = z.infer<typeof BlockStyleSchema>;
 
 export const SectionBackgroundSchema = z.object({
 	color: HexColorSchema.optional()
@@ -72,10 +87,12 @@ export type ThemeColors = z.infer<typeof ThemeColorsSchema>;
 // documents still resolve; themeVars() prefers `colors` and falls back to them. `fontPair`
 // is unchanged. The schemaVersion 3→4 migration resolves legacy keys into `colors`/`swatches`.
 export const ThemeSchema = z.object({
-	palette: z.string().optional(),
-	fontPair: z.string().optional(),
+	// Curated registry keys + a `custom:<headingId>:<bodyId>` font combo. Bounded so a
+	// pathological value can't bloat the persisted document (resolution sanitises ids anyway).
+	palette: z.string().max(64).optional(),
+	fontPair: z.string().max(64).optional(),
 	accent: HexColorSchema.optional(),
-	preset: z.string().optional(),
+	preset: z.string().max(64).optional(),
 	swatches: z.array(HexColorSchema).max(12).optional(),
 	colors: ThemeColorsSchema.optional()
 });

@@ -138,6 +138,83 @@ describe('document schema', () => {
 				sections: [{ id: 'sec', background: { color: 'url(javascript:alert(1))' }, blocks: [] }]
 			}).ok
 		).toBe(false);
+
+		expect(
+			safeParseDocument({
+				schemaVersion: 5,
+				acts: [
+					{
+						id: 'act',
+						scenes: [
+							{
+								id: 'scn',
+								type: 'page',
+								length: 'auto',
+								beats: [{ id: 'b', at: 0 }],
+								elements: [
+									{
+										id: 'el',
+										track: 'content',
+										range: { start: 0, end: 1 },
+										block: {
+											id: 'blk',
+											type: 'heading',
+											props: { text: 'x' },
+											style: {
+												textBackdrop: {
+													shape: 'box',
+													color: '#14181f;background:url(https://example.com/x)',
+													opacity: 0.7
+												}
+											}
+										}
+									}
+								]
+							}
+						]
+					}
+				]
+			}).ok
+		).toBe(false);
+	});
+
+	it('accepts explicit text readability backdrops on block style', () => {
+		const doc = parseDocument({
+			schemaVersion: 5,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'page',
+							length: 'auto',
+							beats: [{ id: 'b', at: 0 }],
+							elements: [
+								{
+									id: 'el',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'blk',
+										type: 'heading',
+										props: { text: 'Readable' },
+										style: {
+											align: 'center',
+											textBackdrop: { shape: 'circle', color: '#FFF3C4', opacity: 0.65 }
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(doc.acts[0].scenes[0].elements[0].block.style).toMatchObject({
+			align: 'center',
+			textBackdrop: { shape: 'circle', color: '#FFF3C4', opacity: 0.65 }
+		});
 	});
 
 	it('accepts an image with empty alt as a draft, but flags it at publish time', () => {

@@ -20,6 +20,10 @@ const LOADERS: Record<string, () => Promise<unknown>> = {
 	caveat: () => import('@fontsource-variable/caveat')
 };
 
+/** Family ids that have a loader — must cover every FONT_FAMILIES id (guarded by a test) so
+ *  no font can be selected that then silently never loads. */
+export const LOADER_IDS = Object.keys(LOADERS);
+
 const loaded = new Set<string>();
 
 /** Load one family's web font (idempotent; no-op on the server or for an unknown id). */

@@ -76,6 +76,32 @@ describe('EditorStore', () => {
 		expect(store.selectedBlock?.block.props).toEqual({ text: 'New', level: 3 });
 	});
 
+	it('stores only schema-valid block style values', () => {
+		store = makeStore();
+		const id = store.addElement('scn_1', 'heading')!;
+		store.updateBlockStyle(id, {
+			align: 'center',
+			textBackdrop: { shape: 'box', color: '#14181f', opacity: 0.7 }
+		});
+		expect(elements(store)[0].block.style).toEqual({
+			align: 'center',
+			textBackdrop: { shape: 'box', color: '#14181f', opacity: 0.7 }
+		});
+
+		store.updateBlockStyle(id, {
+			align: 'center',
+			textBackdrop: {
+				shape: 'box',
+				color: 'url(javascript:alert(1))',
+				opacity: 0.7
+			}
+		});
+		expect(elements(store)[0].block.style).toEqual({
+			align: 'center',
+			textBackdrop: { shape: 'box', color: '#14181f', opacity: 0.7 }
+		});
+	});
+
 	it('adds a timeline clip at the requested scroll position', () => {
 		store = makeStore();
 		const id = store.addElementAt('scn_1', 'richText', 'content', 0.55)!;

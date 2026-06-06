@@ -32,6 +32,19 @@ describe('SceneBackground', () => {
 		expect(container.querySelector('.zine-bg__scrim')).toBeTruthy();
 	});
 
+	it('marks pinned backgrounds as framed in miniature viewport previews', () => {
+		const { container } = render(SceneBackground, {
+			props: {
+				background: { fill: { kind: 'image', src: '/x.svg', fit: 'cover' } },
+				pinned: true,
+				framed: true
+			}
+		});
+		const layer = container.querySelector('.zine-bg');
+		expect(layer?.classList.contains('is-pinned')).toBe(true);
+		expect(layer?.classList.contains('is-framed')).toBe(true);
+	});
+
 	it('renders a canvas host for a canvas fill', () => {
 		const { container } = render(SceneBackground, {
 			props: {

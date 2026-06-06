@@ -6,11 +6,20 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const DEV_LOGIN_EMAIL = 'river@lakeside.test';
 const DEV_LOGIN_PASSWORD = 'password123';
+const DEV_PERSONAS = {
+	student: {
+		email: 'river@lakeside.test',
+		redirectTo: '/app'
+	},
+	teacher: {
+		email: 'quill@lakeside.test',
+		redirectTo: '/app/teacher'
+	}
+} as const;
 
 export const actions: Actions = {
-	devlogin: async ({ locals: { supabase } }) => {
+	devlogin: async ({ request, locals: { supabase } }) => {
 		if (!dev) return fail(404, { message: 'The development login is available only in dev.' });
 		if (!supabase) {
 			return fail(503, {
@@ -19,13 +28,19 @@ export const actions: Actions = {
 			});
 		}
 
+		const form = await request.formData();
+		const personaId = String(form.get('persona') ?? 'student');
+		const persona =
+			personaId in DEV_PERSONAS ? DEV_PERSONAS[personaId as keyof typeof DEV_PERSONAS] : null;
+		if (!persona) return fail(400, { message: 'Pick a valid development login.' });
+
 		const { error } = await supabase.auth.signInWithPassword({
-			email: DEV_LOGIN_EMAIL,
+			email: persona.email,
 			password: DEV_LOGIN_PASSWORD
 		});
 		if (error) return fail(400, { message: `Dev login failed: ${error.message}` });
 
-		throw redirect(303, '/app');
+		throw redirect(303, persona.redirectTo);
 	},
 	magiclink: async ({ request, url, locals: { supabase } }) => {
 		const form = await request.formData();

@@ -78,6 +78,21 @@
 	} | null>(null);
 
 	const sceneProgress = $derived({ [scene.id]: scrub });
+	const previewDocument = $derived.by(() => {
+		const sourceAct = document.acts.find((act) =>
+			act.scenes.some((candidate) => candidate.id === scene.id)
+		);
+		return {
+			...document,
+			acts: [
+				{
+					id: sourceAct?.id ?? 'preview-act',
+					title: sourceAct?.title,
+					scenes: [scene]
+				}
+			]
+		} satisfies ZineDocument;
+	});
 	const screens = $derived(sceneScrollScreens(scene));
 
 	// The whole-screen markers shown on the ruler and as lane gridlines: one tick per
@@ -374,7 +389,15 @@
 <div class="timeline-workbench">
 	<section class="preview-panel" aria-label="Scene preview">
 		<div class="preview-panel__canvas" onwheel={onPreviewWheel}>
-			<ZineRenderer {document} {sceneProgress} pinScenes={false} />
+			<div class="preview-laptop" role="group" aria-label="Mini reader screen">
+				<div class="preview-laptop__lid" aria-hidden="true">
+					<span></span>
+				</div>
+				<div class="preview-laptop__screen">
+					<ZineRenderer document={previewDocument} {sceneProgress} viewport="frame" />
+				</div>
+				<div class="preview-laptop__base" aria-hidden="true"></div>
+			</div>
 		</div>
 		<label class="scrubber">
 			<span>Reader scroll</span>
@@ -554,15 +577,65 @@
 		overflow: hidden;
 	}
 	.preview-panel__canvas {
-		height: min(18rem, 42vh);
-		max-height: 18rem;
+		display: grid;
+		place-items: center;
+		min-height: min(22rem, 48vh);
 		overflow: hidden;
-		background: var(--zine-bg, hsl(var(--background)));
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.08) 1px, transparent 1px),
+			linear-gradient(0deg, oklch(0.24 0.065 281 / 0.08) 1px, transparent 1px), oklch(0.9 0.038 78);
+		background-size:
+			16px 16px,
+			16px 16px,
+			auto;
 		overscroll-behavior: contain;
+		padding: 0.9rem 1rem 1rem;
 		cursor: ns-resize;
 	}
-	.preview-panel__canvas :global(.zine-title) {
+	.preview-laptop {
+		position: relative;
+		width: min(100%, 34rem);
+		filter: drop-shadow(0.28rem 0.28rem 0 var(--pixel-ink));
+	}
+	.preview-laptop__lid {
+		position: relative;
+		border: 2px solid var(--pixel-ink);
+		border-bottom: 0;
+		border-radius: 0.5rem 0.5rem 0 0;
+		background:
+			linear-gradient(180deg, oklch(0.22 0.05 285), oklch(0.13 0.035 285)), var(--pixel-ink);
+		padding: 0.42rem 0.55rem 0;
+	}
+	.preview-laptop__lid span {
+		display: block;
+		width: 0.36rem;
+		height: 0.36rem;
+		margin: 0 auto 0.32rem;
+		border: 1px solid oklch(0.74 0.12 185);
+		border-radius: 50%;
+		background: oklch(0.48 0.13 185);
+		box-shadow: 0 0 0.55rem oklch(0.74 0.12 185 / 0.78);
+	}
+	.preview-laptop__screen {
+		position: relative;
+		aspect-ratio: 16 / 10;
+		overflow: hidden;
+		border: 2px solid var(--pixel-ink);
+		border-radius: 0.18rem;
+		background: var(--zine-bg, hsl(var(--background)));
+		box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.16);
+	}
+	.preview-laptop__screen :global(.zine-title) {
 		display: none;
+	}
+	.preview-laptop__base {
+		width: 94%;
+		height: 0.72rem;
+		margin: 0 auto;
+		border: 2px solid var(--pixel-ink);
+		border-top-width: 1px;
+		border-radius: 0 0 0.7rem 0.7rem;
+		background: linear-gradient(180deg, oklch(0.78 0.035 75), oklch(0.58 0.04 72));
 	}
 	.scrubber {
 		display: grid;

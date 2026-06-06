@@ -68,7 +68,11 @@ function pickAccent(swatches: string[], bg: string, exclude: string[]): string {
  * so the palette's character survives while readability is guaranteed.
  */
 export function deriveTheme(id: string, palette: string[]): CatalogueTheme {
-	const swatches = palette.map((p) => formatHex(p) ?? p);
+	// Normalise to #rrggbb and DROP anything culori can't parse — never let an invalid colour
+	// reach the document (it would fail HexColorSchema and break autosave). Fall back to a
+	// safe neutral pair if a palette is entirely unparseable.
+	const swatches = palette.map((p) => formatHex(p)).filter((h): h is string => Boolean(h));
+	if (swatches.length === 0) swatches.push('#ffffff', '#111111');
 	const byLight = [...swatches].sort((a, b) => lightnessOf(a) - lightnessOf(b));
 	const background = byLight[byLight.length - 1];
 	const text = adjustToContrast(byLight[0], background, AA_TEXT);

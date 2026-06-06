@@ -15,11 +15,13 @@
 		background,
 		progress = 0,
 		pinned = false,
+		framed = false,
 		themePalette = []
 	}: {
 		background?: SceneBackground;
 		progress?: number;
 		pinned?: boolean;
+		framed?: boolean;
 		/** Theme swatch colours (RGB) a theme-aware canvas preset paints with. */
 		themePalette?: [number, number, number][];
 	} = $props();
@@ -95,7 +97,7 @@
 </script>
 
 {#if fill || overlay}
-	<div class="zine-bg" class:is-pinned={pinned} aria-hidden="true">
+	<div class="zine-bg" class:is-pinned={pinned} class:is-framed={framed} aria-hidden="true">
 		{#if fill?.kind === 'image'}
 			<img
 				class="zine-bg__media"
@@ -156,6 +158,11 @@
 		   scene content starts over the backdrop instead of one viewport below it. */
 		margin-bottom: -100vh;
 		margin-bottom: -100dvh;
+	}
+	.zine-bg.is-framed.is-pinned {
+		position: absolute;
+		height: 100%;
+		margin-bottom: 0;
 	}
 	.zine-bg__media {
 		position: absolute;

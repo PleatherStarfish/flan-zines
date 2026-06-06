@@ -105,7 +105,7 @@
 				aria-haspopup="dialog"
 				onclick={() => (showTheme = true)}
 			>
-				🎨 Colours
+				Colors and Fonts
 			</button>
 			<button type="button" class="secondary-button" onclick={() => addScene(undefined, 'page')}>
 				Add scene

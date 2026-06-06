@@ -134,6 +134,162 @@ describe('ZineRenderer', () => {
 		expect(inStyle).toMatch(/opacity:\s*1\b/);
 	});
 
+	it('renders text blocks transparent by default, with explicit tight readability backdrops', () => {
+		const document = parseDocument({
+			schemaVersion: 5,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'page',
+							length: 'auto',
+							beats: [{ id: 'b', at: 0 }],
+							elements: [
+								{
+									id: 'plain',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: { id: 'plain_blk', type: 'heading', props: { text: 'Plain', level: 2 } }
+								},
+								{
+									id: 'boxed',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'boxed_blk',
+										type: 'heading',
+										props: { text: 'Boxed', level: 2 },
+										style: {
+											textBackdrop: { shape: 'box', color: '#14181f', opacity: 0.8 }
+										}
+									}
+								},
+								{
+									id: 'circle',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'circle_blk',
+										type: 'richText',
+										props: {
+											doc: {
+												type: 'doc',
+												content: [
+													{
+														type: 'paragraph',
+														content: [{ type: 'text', text: 'Circle note' }]
+													}
+												]
+											}
+										},
+										style: {
+											textBackdrop: { shape: 'circle', color: '#FFF3C4', opacity: 0.55 }
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		}) satisfies ZineDocument;
+
+		const { container } = render(ZineRenderer, { props: { document } });
+		const blocks = container.querySelectorAll('.zine-block');
+		expect(blocks[0].hasAttribute('data-text-backdrop')).toBe(false);
+		expect(blocks[0].getAttribute('style')).toBeNull();
+
+		expect(blocks[1].getAttribute('data-text-backdrop')).toBe('box');
+		expect(blocks[1].getAttribute('style')).toMatch(/--zine-text-backdrop-color:\s*#14181f/);
+		expect(blocks[1].getAttribute('style')).toMatch(/--zine-text-backdrop-opacity:\s*80%/);
+		expect(blocks[1].querySelector(':scope > .zine-heading')).toBeTruthy();
+
+		expect(blocks[2].getAttribute('data-text-backdrop')).toBe('circle');
+		expect(blocks[2].getAttribute('style')).toMatch(/--zine-text-backdrop-color:\s*#FFF3C4/);
+		expect(blocks[2].getAttribute('style')).toMatch(/--zine-text-backdrop-opacity:\s*55%/);
+		expect(blocks[2].querySelector(':scope > .zine-richtext')).toBeTruthy();
+	});
+
+	it('keeps free text transparent over canvas scene backgrounds unless a backdrop is explicit', () => {
+		const document = parseDocument({
+			schemaVersion: 5,
+			theme: {
+				colors: {
+					background: '#F4EAD5',
+					text: '#C5295A',
+					heading: '#C5295A',
+					accent: '#E94E77',
+					muted: '#A08076'
+				}
+			},
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'clouds',
+							type: 'parallax',
+							length: 'auto',
+							scrollLength: 4,
+							background: {
+								fill: {
+									kind: 'canvas',
+									preset: 'organic-gradient',
+									params: {
+										count: 'some',
+										motion: 'gentle',
+										opacity: 'soft',
+										placement: 'scattered',
+										colors: []
+									}
+								}
+							},
+							beats: [{ id: 'b', at: 0 }],
+							elements: [
+								{
+									id: 'free_heading',
+									track: 'media',
+									placement: 'free',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'free_heading_block',
+										type: 'heading',
+										props: { text: 'Why We Read at Night', level: 2 }
+									},
+									motion: {
+										type: 'path',
+										params: {
+											waypoints: [
+												{ at: 0, x: 18, y: 25, scale: 1, rotate: 0, ease: 'smooth' },
+												{ at: 1, x: 78, y: 70, scale: 1, rotate: 0, ease: 'smooth' }
+											]
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		}) satisfies ZineDocument;
+
+		const { container } = render(ZineRenderer, {
+			props: { document, sceneProgress: { clouds: 0.5 } }
+		});
+		const actor = container.querySelector('.zine-free-actor');
+		expect(actor?.getAttribute('data-track')).toBe('media');
+		expect(actor?.getAttribute('data-block-type')).toBe('heading');
+
+		const block = container.querySelector('.zine-free-actor .zine-block');
+		expect(block?.hasAttribute('data-text-backdrop')).toBe(false);
+		expect(block?.getAttribute('style')).not.toMatch(/--zine-text-backdrop/);
+		expect(block?.querySelector(':scope > .zine-heading')?.textContent).toBe(
+			'Why We Read at Night'
+		);
+	});
+
 	it('sizes and pins a timeline scene to its scroll distance, but leaves page scenes in flow', () => {
 		const make = (type: string, scrollLength?: number) =>
 			parseDocument({
@@ -182,6 +338,16 @@ describe('ZineRenderer', () => {
 		});
 		expect(preview.container.querySelector('.zine-scene')?.getAttribute('style')).toBeNull();
 		expect(preview.container.querySelector('.zine-scene__inner.is-pinned')).toBeNull();
+		preview.unmount();
+
+		// The timeline's laptop preview keeps the real pinned choreography path, but lets the
+		// containing screen define the viewport instead of emitting a browser-sized scroll range.
+		const framed = render(ZineRenderer, {
+			props: { document: make('reveal', 6), viewport: 'frame', sceneProgress: { scn: 0.4 } }
+		});
+		expect(framed.container.querySelector('.zine')?.getAttribute('data-viewport')).toBe('frame');
+		expect(framed.container.querySelector('.zine-scene')?.getAttribute('style')).toBeNull();
+		expect(framed.container.querySelector('.zine-scene__inner.is-pinned')).toBeTruthy();
 	});
 
 	it('renders a side-scroll scene as a stage of actors that pans with scroll progress', () => {
