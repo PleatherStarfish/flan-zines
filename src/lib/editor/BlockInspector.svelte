@@ -3,7 +3,8 @@
 	import type { EditorStore } from './store.svelte';
 	import type { Element } from '$lib/zine/schema/document';
 	import { getBlock } from '$lib/zine/registry';
-	import type { BlockStyle, TextBackdropShape } from '$lib/zine/schema/theme';
+	import type { BlockStyle, TextKind } from '$lib/zine/schema/theme';
+	import { textKindForElement } from '$lib/zine/render/typeset';
 
 	let { store, element }: { store: EditorStore; element: Element } = $props();
 
@@ -40,18 +41,18 @@
 	const aligns: { v: NonNullable<BlockStyle['align']>; l: string }[] = [
 		{ v: 'left', l: 'Left' },
 		{ v: 'center', l: 'Center' },
-		{ v: 'right', l: 'Right' }
+		{ v: 'right', l: 'Right' },
+		{ v: 'justify', l: 'Even edges' }
 	];
-	const backdropShapes: { v: TextBackdropShape | 'none'; l: string }[] = [
-		{ v: 'none', l: 'None' },
-		{ v: 'box', l: 'Box' },
-		{ v: 'circle', l: 'Circle' }
-	];
-	const supportsTextBackdrop = $derived(block.type === 'heading' || block.type === 'richText');
-	const backdrop = $derived(block.style?.textBackdrop);
-	const backdropSummary = $derived(
-		backdrop ? `${backdrop.shape} ${Math.round(backdrop.opacity * 100)}%` : 'none'
-	);
+
+	// Editorial typesetting (text blocks only). Student-facing labels avoid jargon; roles are
+	// filtered to the ones that suit the block.
+	const isTextBlock = $derived(block.type === 'heading' || block.type === 'richText');
+	const textKind = $derived(textKindForElement(liveElement));
+
+	function setTextKind(kind: TextKind): void {
+		store.setTextKind(element.id, kind);
+	}
 
 	function updateStyle(next: BlockStyle): void {
 		store.updateBlockStyle(element.id, next);
@@ -59,30 +60,6 @@
 
 	function setAlign(align: NonNullable<BlockStyle['align']>): void {
 		updateStyle({ ...(block.style ?? {}), align });
-	}
-
-	function setBackdropShape(shape: TextBackdropShape | 'none'): void {
-		const next: BlockStyle = { ...(block.style ?? {}) };
-		if (shape === 'none') {
-			delete next.textBackdrop;
-		} else {
-			next.textBackdrop = {
-				shape,
-				color: backdrop?.color ?? '#14181f',
-				opacity: backdrop?.opacity ?? 0.72
-			};
-		}
-		updateStyle(next);
-	}
-
-	function setBackdropColor(color: string): void {
-		if (!backdrop) return;
-		updateStyle({ ...(block.style ?? {}), textBackdrop: { ...backdrop, color } });
-	}
-
-	function setBackdropOpacity(opacity: number): void {
-		if (!backdrop) return;
-		updateStyle({ ...(block.style ?? {}), textBackdrop: { ...backdrop, opacity } });
 	}
 </script>
 
@@ -92,71 +69,34 @@
 			<h3>Content</h3>
 			<p>Change the words, link, or image this clip shows.</p>
 		</div>
-		<Inspector value={working} {onChange} />
+		<Inspector
+			value={working}
+			{onChange}
+			style={block.style}
+			onStyleChange={updateStyle}
+			{textKind}
+			onTextKindChange={setTextKind}
+			theme={store.doc.theme}
+		/>
 		{#if error}<p role="alert" class="block-inspector__error">{error}</p>{/if}
 	</section>
 
-	<details class="rail-disclosure">
-		<summary>
-			<span>Position</span>
-			<strong>{block.style?.align ?? 'left'}</strong>
-		</summary>
-		<div class="alignment-buttons" role="group" aria-label="Alignment">
-			{#each aligns as a (a.v)}
-				<button
-					type="button"
-					aria-pressed={block.style?.align === a.v || (!block.style?.align && a.v === 'left')}
-					onclick={() => setAlign(a.v)}
-				>
-					{a.l}
-				</button>
-			{/each}
-		</div>
-	</details>
-
-	{#if supportsTextBackdrop}
+	{#if !isTextBlock}
 		<details class="rail-disclosure">
 			<summary>
-				<span>Readability</span>
-				<strong>{backdropSummary}</strong>
+				<span>Position</span>
+				<strong>{block.style?.align ?? 'left'}</strong>
 			</summary>
-			<div class="backdrop-controls">
-				<div class="segmented" role="group" aria-label="Text background">
-					{#each backdropShapes as shape (shape.v)}
-						<button
-							type="button"
-							aria-pressed={shape.v === 'none' ? !backdrop : backdrop?.shape === shape.v}
-							onclick={() => setBackdropShape(shape.v)}
-						>
-							{shape.l}
-						</button>
-					{/each}
-				</div>
-
-				{#if backdrop}
-					<label class="control-row">
-						<span>Color</span>
-						<input
-							type="color"
-							aria-label="Readability background color"
-							value={backdrop.color}
-							oninput={(event) => setBackdropColor(event.currentTarget.value)}
-						/>
-					</label>
-					<label class="control-row">
-						<span>Opacity</span>
-						<input
-							type="range"
-							aria-label="Readability background opacity"
-							min="0"
-							max="1"
-							step="0.05"
-							value={backdrop.opacity}
-							oninput={(event) => setBackdropOpacity(Number(event.currentTarget.value))}
-						/>
-						<output>{Math.round(backdrop.opacity * 100)}%</output>
-					</label>
-				{/if}
+			<div class="alignment-buttons" role="group" aria-label="Alignment">
+				{#each aligns as a (a.v)}
+					<button
+						type="button"
+						aria-pressed={block.style?.align === a.v || (!block.style?.align && a.v === 'left')}
+						onclick={() => setAlign(a.v)}
+					>
+						{a.l}
+					</button>
+				{/each}
 			</div>
 		</details>
 	{/if}
@@ -241,8 +181,7 @@
 		display: flex;
 		gap: 0.35rem;
 	}
-	.alignment-buttons button,
-	.segmented button {
+	.alignment-buttons button {
 		flex: 1 1 auto;
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
@@ -253,39 +192,8 @@
 		font-size: 0.82rem;
 		font-weight: 850;
 	}
-	.alignment-buttons button[aria-pressed='true'],
-	.segmented button[aria-pressed='true'] {
+	.alignment-buttons button[aria-pressed='true'] {
 		background: var(--pixel-green);
-	}
-	.backdrop-controls {
-		display: grid;
-		gap: 0.55rem;
-	}
-	.segmented {
-		display: flex;
-		gap: 0.35rem;
-	}
-	.control-row {
-		display: grid;
-		grid-template-columns: 4.5rem minmax(0, 1fr) max-content;
-		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.78rem;
-		font-weight: 800;
-		color: hsl(var(--muted-foreground));
-	}
-	.control-row input[type='color'] {
-		width: 100%;
-		min-height: 2.1rem;
-		padding: 0.2rem;
-	}
-	.control-row input[type='range'] {
-		width: 100%;
-		accent-color: hsl(var(--primary));
-	}
-	.control-row output {
-		color: hsl(var(--foreground));
-		font-variant-numeric: tabular-nums;
 	}
 	.block-inspector__error {
 		margin: 0.2rem 0 0;

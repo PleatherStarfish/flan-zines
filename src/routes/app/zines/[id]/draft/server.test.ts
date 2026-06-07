@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PUT } from './+server';
 
-const validDocument = { schemaVersion: 5, acts: [] };
+const validDocument = { schemaVersion: 7, acts: [] };
 
 function eventWith(supabase: unknown, body: unknown): Parameters<typeof PUT>[0] {
 	return {

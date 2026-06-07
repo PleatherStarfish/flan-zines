@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
+	import FocusedTextTools from '$lib/editor/FocusedTextTools.svelte';
+	import { defaultContentRole } from '$lib/zine/render/typeset';
 	import { SafeUrlSchema } from '../../schema/url';
+	import type { BlockStyle, TextKind, Theme } from '../../schema/theme';
 	import type {
 		RichTextBlockNode,
 		RichTextDoc,
@@ -9,42 +12,113 @@
 	} from '../../schema/richtext';
 	import type { RichTextProps } from './schema';
 
-	let { value, onChange }: { value: RichTextProps; onChange: (next: RichTextProps) => void } =
-		$props();
+	let {
+		value,
+		onChange,
+		style,
+		onStyleChange,
+		textKind = 'content',
+		onTextKindChange,
+		theme
+	}: {
+		value: RichTextProps;
+		onChange: (next: RichTextProps) => void;
+		style?: BlockStyle;
+		onStyleChange?: (next: BlockStyle) => void;
+		textKind?: TextKind;
+		onTextKindChange?: (kind: TextKind) => void;
+		theme?: Theme;
+	} = $props();
 
 	let open = $state(false);
+	let editorWrapEl = $state<HTMLDivElement | null>(null);
 	let editorEl = $state<HTMLDivElement | null>(null);
 	let panelEl = $state<HTMLDivElement | null>(null);
 	let openButtonEl = $state<HTMLButtonElement | null>(null);
+	let linkInputEl = $state<HTMLInputElement | null>(null);
 	let linkPanelOpen = $state(false);
 	let linkHref = $state('');
 	let linkError = $state<string | null>(null);
+	let linkSelectionText = $state('');
+	let linkBubble = $state<{ left: number; top: number; text: string } | null>(null);
+	let draftDoc = $state<RichTextDoc>(untrack(() => structuredClone($state.snapshot(value.doc))));
+	let draftStyle = $state<BlockStyle | undefined>(untrack(() => cloneStyle(style)));
+	let draftTextKind = $state<TextKind>(untrack(() => textKind));
+	let draftStyleDirty = $state(false);
+	let draftTextKindDirty = $state(false);
 	let savedRange: Range | null = null;
+	let activeLinkHighlight: HTMLElement | null = null;
 
 	const preview = $derived(docToPlainText(value.doc));
 
 	async function openEditor(): Promise<void> {
 		open = true;
+		draftDoc = structuredClone($state.snapshot(value.doc));
+		draftStyle = cloneStyle(style);
+		draftTextKind = textKind;
+		draftStyleDirty = false;
+		draftTextKindDirty = false;
 		linkPanelOpen = false;
 		linkError = null;
+		linkSelectionText = '';
+		linkBubble = null;
+		clearLinkHighlight();
 		await tick();
 		if (!editorEl) return;
-		renderDocIntoEditor(value.doc, editorEl);
+		renderDocIntoEditor(draftDoc, editorEl);
 		editorEl.focus();
 	}
 
 	function closeEditor(): void {
+		clearLinkHighlight();
 		open = false;
 		linkPanelOpen = false;
+		linkBubble = null;
 		linkError = null;
+		linkSelectionText = '';
 		savedRange = null;
 		tick().then(() => openButtonEl?.focus());
 	}
 
 	function saveEditor(): void {
-		if (!editorEl) return;
-		onChange({ doc: editorToDoc(editorEl) });
+		clearLinkHighlight();
+		updateDraftFromEditor();
+		onChange({ doc: draftDoc });
+		if (draftTextKindDirty) onTextKindChange?.(draftTextKind);
+		if (draftStyleDirty) onStyleChange?.(draftStyle ?? {});
 		closeEditor();
+	}
+
+	function updateDraftFromEditor(): void {
+		if (!editorEl) return;
+		savedRange = selectionRangeInEditor();
+		draftDoc = editorToDoc(editorEl);
+	}
+
+	function cloneStyle(source: BlockStyle | undefined): BlockStyle | undefined {
+		return source ? structuredClone($state.snapshot(source)) : undefined;
+	}
+
+	function setDraftStyle(next: BlockStyle): void {
+		draftStyle = structuredClone($state.snapshot(next));
+		draftStyleDirty = true;
+	}
+
+	function setDraftTextKind(kind: TextKind): void {
+		draftTextKind = kind;
+		draftTextKindDirty = true;
+		draftStyleDirty = true;
+		const next: BlockStyle = { ...(draftStyle ?? {}) };
+		if (kind === 'other') {
+			next.typeset = { kind: 'other' };
+		} else {
+			next.typeset = {
+				...(next.typeset ?? {}),
+				kind: 'content',
+				role: next.typeset?.role ?? defaultContentRole('richText')
+			};
+		}
+		draftStyle = next;
 	}
 
 	function onModalKeydown(event: KeyboardEvent): void {
@@ -79,18 +153,28 @@
 		restoreSelection();
 		document.execCommand(command, false, commandValue);
 		editorEl?.focus();
-		savedRange = selectionRangeInEditor();
+		updateDraftFromEditor();
 	}
 
 	function setBlockStyle(tag: 'p' | 'h2' | 'h3' | 'blockquote'): void {
 		exec('formatBlock', tag);
 	}
 
-	function openLinkPanel(): void {
-		savedRange = selectionRangeInEditor();
-		linkHref = currentLinkHref();
+	async function openLinkPanel(): Promise<void> {
+		const range = selectionRangeInEditor() ?? savedRange;
+		linkSelectionText = range?.toString().trim() ?? '';
 		linkError = null;
+		if (!range || range.collapsed || !linkSelectionText) {
+			linkError = 'Highlight the words to link first.';
+			return;
+		}
+		savedRange = range.cloneRange();
+		linkHref = currentLinkHref();
+		linkBubble = bubbleFromRange(range, linkSelectionText);
+		if (!highlightLinkSelection()) return;
 		linkPanelOpen = true;
+		await tick();
+		linkInputEl?.focus();
 	}
 
 	function applyLink(): void {
@@ -99,39 +183,107 @@
 			linkError = parsed.error.issues[0]?.message ?? 'Enter a safe URL.';
 			return;
 		}
-		restoreSelection();
-		const selection = window.getSelection();
-		if (!selection || !editorEl) return;
-		if (selection.rangeCount === 0) {
-			const range = document.createRange();
-			range.selectNodeContents(editorEl);
-			range.collapse(false);
-			selection.addRange(range);
+		if (!linkSelectionText) {
+			linkError = 'Highlight the words to link first.';
+			return;
 		}
-		if (selection.isCollapsed) {
+		if (activeLinkHighlight && editorEl?.contains(activeLinkHighlight)) {
+			const anchor = document.createElement('a');
+			anchor.href = parsed.data;
+			while (activeLinkHighlight.firstChild) anchor.append(activeLinkHighlight.firstChild);
+			activeLinkHighlight.replaceWith(anchor);
+			activeLinkHighlight = null;
+			selectAfter(anchor);
+		} else {
+			restoreSelection();
+			const selection = window.getSelection();
+			if (!selection || !editorEl) return;
+			if (selection.rangeCount === 0 || selection.isCollapsed) {
+				linkError = 'Highlight the words to link first.';
+				return;
+			}
 			const range = selection.getRangeAt(0);
 			const anchor = document.createElement('a');
 			anchor.href = parsed.data;
-			anchor.textContent = parsed.data;
-			range.deleteContents();
+			anchor.append(range.extractContents());
 			range.insertNode(anchor);
-			range.setStartAfter(anchor);
-			range.collapse(true);
-			selection.removeAllRanges();
-			selection.addRange(range);
-		} else {
-			document.execCommand('createLink', false, parsed.data);
+			selectAfter(anchor);
 		}
 		linkPanelOpen = false;
+		linkBubble = null;
 		linkError = null;
+		linkSelectionText = '';
 		editorEl?.focus();
-		savedRange = selectionRangeInEditor();
+		updateDraftFromEditor();
 	}
 
 	function removeLink(): void {
-		exec('unlink');
+		if (activeLinkHighlight && editorEl?.contains(activeLinkHighlight)) {
+			for (const anchor of Array.from(activeLinkHighlight.querySelectorAll('a'))) {
+				while (anchor.firstChild) anchor.parentNode?.insertBefore(anchor.firstChild, anchor);
+				anchor.remove();
+			}
+			clearLinkHighlight();
+			updateDraftFromEditor();
+		} else {
+			exec('unlink');
+		}
 		linkPanelOpen = false;
+		linkBubble = null;
+		linkSelectionText = '';
 	}
+
+	function cancelLinkPanel(): void {
+		clearLinkHighlight();
+		linkPanelOpen = false;
+		linkBubble = null;
+		linkHref = '';
+		linkError = null;
+		linkSelectionText = '';
+		editorEl?.focus();
+	}
+
+	function refreshLinkBubble(): void {
+		if (!open || !editorWrapEl) {
+			linkBubble = null;
+			return;
+		}
+		if (linkPanelOpen) return;
+		const range = selectionRangeInEditor();
+		const text = range?.toString().trim() ?? '';
+		if (!range || range.collapsed || !text) {
+			linkBubble = null;
+			return;
+		}
+		savedRange = range;
+		linkSelectionText = text;
+		linkBubble = bubbleFromRange(range, text);
+	}
+
+	function bubbleFromRange(
+		range: Range,
+		text: string
+	): { left: number; top: number; text: string } {
+		const rect =
+			'getBoundingClientRect' in range
+				? range.getBoundingClientRect()
+				: ({ left: 0, top: 0, width: 0 } as Pick<DOMRect, 'left' | 'top' | 'width'>);
+		const wrapRect = editorWrapEl?.getBoundingClientRect() ?? { left: 0, top: 0 };
+		const wrapWidth = editorWrapEl?.clientWidth || 320;
+		const left = Math.max(54, Math.min(wrapWidth - 54, rect.left - wrapRect.left + rect.width / 2));
+		const top = Math.max(6, rect.top - wrapRect.top - 38);
+		return { left, top, text };
+	}
+
+	$effect(() => {
+		if (!open || typeof document === 'undefined' || typeof window === 'undefined') return;
+		document.addEventListener('selectionchange', refreshLinkBubble);
+		window.addEventListener('resize', refreshLinkBubble);
+		return () => {
+			document.removeEventListener('selectionchange', refreshLinkBubble);
+			window.removeEventListener('resize', refreshLinkBubble);
+		};
+	});
 
 	function selectionRangeInEditor(): Range | null {
 		if (!editorEl) return null;
@@ -153,6 +305,47 @@
 		selection.addRange(savedRange);
 	}
 
+	function highlightLinkSelection(): boolean {
+		clearLinkHighlight();
+		restoreSelection();
+		const selection = window.getSelection();
+		if (!selection || !editorEl || selection.rangeCount === 0 || selection.isCollapsed)
+			return false;
+		const range = selection.getRangeAt(0);
+		const highlight = document.createElement('span');
+		highlight.dataset.linkSelection = 'true';
+		highlight.append(range.extractContents());
+		range.insertNode(highlight);
+		const nextRange = document.createRange();
+		nextRange.selectNodeContents(highlight);
+		selection.removeAllRanges();
+		selection.addRange(nextRange);
+		savedRange = nextRange.cloneRange();
+		activeLinkHighlight = highlight;
+		return true;
+	}
+
+	function clearLinkHighlight(): void {
+		const highlight = activeLinkHighlight;
+		activeLinkHighlight = null;
+		if (!highlight?.parentNode) return;
+		const parent = highlight.parentNode;
+		while (highlight.firstChild) parent.insertBefore(highlight.firstChild, highlight);
+		parent.removeChild(highlight);
+		parent.normalize();
+	}
+
+	function selectAfter(node: Node): void {
+		const selection = window.getSelection();
+		if (!selection) return;
+		const range = document.createRange();
+		range.setStartAfter(node);
+		range.collapse(true);
+		selection.removeAllRanges();
+		selection.addRange(range);
+		savedRange = range.cloneRange();
+	}
+
 	function currentLinkHref(): string {
 		const range = selectionRangeInEditor();
 		const node = range?.commonAncestorContainer;
@@ -165,6 +358,7 @@
 		if (text == null) return;
 		event.preventDefault();
 		document.execCommand('insertText', false, text);
+		updateDraftFromEditor();
 	}
 
 	function renderDocIntoEditor(doc: RichTextDoc, target: HTMLElement): void {
@@ -408,6 +602,8 @@
 			<div class="rich-toolbar" aria-label="Text formatting">
 				<button
 					type="button"
+					aria-label="Bold"
+					title="Bold"
 					onpointerdown={(e) => e.preventDefault()}
 					onclick={() => exec('bold')}
 				>
@@ -415,6 +611,8 @@
 				</button>
 				<button
 					type="button"
+					aria-label="Italic"
+					title="Italic"
 					onpointerdown={(e) => e.preventDefault()}
 					onclick={() => exec('italic')}
 				>
@@ -422,6 +620,8 @@
 				</button>
 				<button
 					type="button"
+					aria-label="Underline"
+					title="Underline"
 					onpointerdown={(e) => e.preventDefault()}
 					onclick={() => exec('underline')}
 				>
@@ -429,6 +629,8 @@
 				</button>
 				<button
 					type="button"
+					aria-label="Heading"
+					title="Heading"
 					onpointerdown={(e) => e.preventDefault()}
 					onclick={() => setBlockStyle('h2')}
 				>
@@ -436,6 +638,8 @@
 				</button>
 				<button
 					type="button"
+					aria-label="Subhead"
+					title="Subhead"
 					onpointerdown={(e) => e.preventDefault()}
 					onclick={() => setBlockStyle('h3')}
 				>
@@ -443,6 +647,8 @@
 				</button>
 				<button
 					type="button"
+					aria-label="Quote"
+					title="Quote"
 					onpointerdown={(e) => e.preventDefault()}
 					onclick={() => setBlockStyle('blockquote')}
 				>
@@ -450,30 +656,44 @@
 				</button>
 				<button
 					type="button"
+					aria-label="Normal paragraph"
+					title="Normal paragraph"
 					onpointerdown={(e) => e.preventDefault()}
 					onclick={() => setBlockStyle('p')}
 				>
-					Normal
+					Plain text
 				</button>
 				<button
 					type="button"
+					aria-label="Bullet list"
+					title="Bullet list"
 					onpointerdown={(e) => e.preventDefault()}
 					onclick={() => exec('insertUnorderedList')}
 				>
-					• List
+					Bullets
 				</button>
 				<button
 					type="button"
+					aria-label="Numbered list"
+					title="Numbered list"
 					onpointerdown={(e) => e.preventDefault()}
 					onclick={() => exec('insertOrderedList')}
 				>
-					1. List
-				</button>
-				<button type="button" onpointerdown={(e) => e.preventDefault()} onclick={openLinkPanel}>
-					Link
+					Numbers
 				</button>
 				<button
 					type="button"
+					aria-label="Add link to selected text"
+					title="Add link to selected text"
+					onpointerdown={(e) => e.preventDefault()}
+					onclick={openLinkPanel}
+				>
+					Add link
+				</button>
+				<button
+					type="button"
+					aria-label="Clear formatting"
+					title="Clear formatting"
 					onpointerdown={(e) => e.preventDefault()}
 					onclick={() => exec('removeFormat')}
 				>
@@ -481,41 +701,90 @@
 				</button>
 			</div>
 
-			{#if linkPanelOpen}
-				<div class="rich-link-panel">
-					<label>
-						<span>Link URL</span>
-						<input
-							type="url"
-							value={linkHref}
-							placeholder="https://example.com"
-							oninput={(e) => {
-								linkHref = e.currentTarget.value;
-								linkError = null;
-							}}
-						/>
-					</label>
-					<div class="rich-link-panel__actions">
-						<button type="button" onclick={applyLink}>Apply link</button>
-						<button type="button" onclick={removeLink}>Remove link</button>
-					</div>
-					{#if linkError}<p role="alert">{linkError}</p>{/if}
+			<div class="rich-modal__body">
+				<div class="rich-editor-wrap" bind:this={editorWrapEl}>
+					{#if linkBubble}
+						<div
+							class="rich-link-bubble"
+							class:is-expanded={linkPanelOpen}
+							role={linkPanelOpen ? 'dialog' : undefined}
+							aria-label={linkPanelOpen ? 'Add link to selected text' : undefined}
+							style={`left:${linkBubble.left}px;top:${linkBubble.top}px`}
+						>
+							{#if linkPanelOpen}
+								<div class="rich-link-bubble__selection">
+									<span>Selected text</span>
+									<strong>{linkSelectionText}</strong>
+								</div>
+								<label>
+									<span>Link URL</span>
+									<input
+										bind:this={linkInputEl}
+										type="url"
+										value={linkHref}
+										placeholder="https://example.com"
+										oninput={(e) => {
+											linkHref = e.currentTarget.value;
+											linkError = null;
+										}}
+										onkeydown={(e) => {
+											if (e.key === 'Enter') {
+												e.preventDefault();
+												applyLink();
+											} else if (e.key === 'Escape') {
+												e.preventDefault();
+												cancelLinkPanel();
+											}
+										}}
+									/>
+								</label>
+								<div class="rich-link-bubble__actions">
+									<button type="button" disabled={!linkSelectionText} onclick={applyLink}>
+										Apply link
+									</button>
+									<button type="button" onclick={removeLink}>Remove link</button>
+									<button type="button" onclick={cancelLinkPanel}>Cancel</button>
+								</div>
+								{#if linkError}<p role="alert">{linkError}</p>{/if}
+							{:else}
+								<button
+									type="button"
+									aria-label="Add link to highlighted text"
+									onpointerdown={(e) => e.preventDefault()}
+									onclick={openLinkPanel}
+								>
+									Add link
+								</button>
+							{/if}
+						</div>
+					{/if}
+					<div
+						class="rich-editor"
+						bind:this={editorEl}
+						contenteditable="true"
+						role="textbox"
+						aria-label="Rich text editor"
+						aria-multiline="true"
+						tabindex="0"
+						onmouseup={refreshLinkBubble}
+						onkeyup={refreshLinkBubble}
+						oninput={() => {
+							updateDraftFromEditor();
+							refreshLinkBubble();
+						}}
+						onpaste={onPaste}
+					></div>
 				</div>
-			{/if}
 
-			<div
-				class="rich-editor"
-				bind:this={editorEl}
-				contenteditable="true"
-				role="textbox"
-				aria-label="Rich text editor"
-				aria-multiline="true"
-				tabindex="0"
-				onmouseup={() => (savedRange = selectionRangeInEditor())}
-				onkeyup={() => (savedRange = selectionRangeInEditor())}
-				oninput={() => (savedRange = selectionRangeInEditor())}
-				onpaste={onPaste}
-			></div>
+				<FocusedTextTools
+					block={{ id: 'richtext_draft', type: 'richText', props: { doc: draftDoc } }}
+					style={draftStyle}
+					textKind={draftTextKind}
+					{theme}
+					onStyleChange={setDraftStyle}
+					onTextKindChange={setDraftTextKind}
+				/>
+			</div>
 		</div>
 	</div>
 {/if}
@@ -571,7 +840,7 @@
 	}
 	.rich-modal__panel {
 		display: grid;
-		grid-template-rows: max-content max-content max-content minmax(0, 1fr);
+		grid-template-rows: max-content max-content minmax(0, 1fr);
 		width: min(72rem, calc(100vw - 2rem));
 		height: min(52rem, calc(100dvh - 2rem));
 		max-height: calc(100dvh - 2rem);
@@ -623,58 +892,115 @@
 		padding: 0.55rem 0.85rem;
 	}
 	.rich-toolbar button {
-		min-width: 2.2rem;
-		padding: 0.4rem 0.52rem;
-		font-size: 0.8rem;
+		min-width: 2.45rem;
+		padding: 0.4rem 0.58rem;
+		font-size: 0.78rem;
 	}
-	.rich-link-panel {
+	.rich-modal__body {
 		grid-row: 3;
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) max-content;
-		align-items: end;
-		gap: 0.6rem;
-		border-bottom: 2px solid var(--pixel-ink);
-		background: oklch(0.96 0.03 82);
-		padding: 0.7rem 1rem;
+		grid-template-columns: minmax(18rem, 0.75fr) minmax(29rem, 1.25fr);
+		gap: 0;
+		min-height: 0;
+		overflow: hidden;
 	}
-	.rich-link-panel label {
+	.rich-editor-wrap {
+		position: relative;
 		display: grid;
-		gap: 0.25rem;
+		min-height: 0;
+		margin: 0.7rem;
 	}
-	.rich-link-panel span {
+	.rich-link-bubble {
+		position: absolute;
+		z-index: 3;
+		transform: translateX(-50%);
+		background: var(--pixel-cyan) !important;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		box-shadow: 0.12rem 0.12rem 0 var(--pixel-ink);
+		padding: 0;
+		color: hsl(var(--foreground));
+		font-size: 0.74rem;
+		white-space: nowrap;
+	}
+	.rich-link-bubble.is-expanded {
+		display: grid;
+		width: min(21rem, calc(100% - 1rem));
+		gap: 0.42rem;
+		background: oklch(0.965 0.05 95) !important;
+		padding: 0.48rem;
+		white-space: normal;
+	}
+	.rich-link-bubble::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: 100%;
+		width: 0.55rem;
+		height: 0.55rem;
+		border-right: 2px solid var(--pixel-ink);
+		border-bottom: 2px solid var(--pixel-ink);
+		background: var(--pixel-cyan);
+		transform: translate(-50%, -0.34rem) rotate(45deg);
+	}
+	.rich-link-bubble.is-expanded::after {
+		background: oklch(0.965 0.05 95);
+	}
+	.rich-link-bubble > button {
+		border: 0;
+		box-shadow: none;
+		background: transparent;
+		padding: 0.34rem 0.52rem;
+	}
+	.rich-link-bubble label,
+	.rich-link-bubble__selection {
+		display: grid;
+		gap: 0.2rem;
+	}
+	.rich-link-bubble span {
 		color: hsl(var(--muted-foreground));
-		font-size: 0.72rem;
+		font-size: 0.66rem;
 		font-weight: 850;
 	}
-	.rich-link-panel input {
+	.rich-link-bubble strong {
+		overflow: hidden;
+		color: hsl(var(--foreground));
+		font-size: 0.78rem;
+		font-weight: 900;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.rich-link-bubble input {
 		width: 100%;
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
 		background: var(--pixel-paper);
-		padding: 0.45rem 0.55rem;
+		padding: 0.42rem 0.5rem;
 		color: hsl(var(--foreground));
-		font-size: 0.84rem;
+		font-size: 0.82rem;
 	}
-	.rich-link-panel__actions {
+	.rich-link-bubble__actions {
 		display: flex;
-		gap: 0.35rem;
+		flex-wrap: wrap;
+		gap: 0.32rem;
 	}
-	.rich-link-panel button {
-		padding: 0.43rem 0.58rem;
-		font-size: 0.78rem;
+	.rich-link-bubble__actions button {
+		padding: 0.34rem 0.5rem;
+		font-size: 0.72rem;
 	}
-	.rich-link-panel p {
-		grid-column: 1 / -1;
+	.rich-link-bubble__actions button:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+	.rich-link-bubble p {
 		margin: 0;
 		color: hsl(var(--destructive));
-		font-size: 0.78rem;
-		font-weight: 800;
+		font-size: 0.72rem;
+		font-weight: 850;
 	}
 	.rich-editor {
-		grid-row: 4;
 		overflow: auto;
 		min-height: 0;
-		margin: 0.7rem;
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
 		background: oklch(0.995 0.01 82);
@@ -716,6 +1042,20 @@
 		background: oklch(0.98 0.035 340);
 		padding: 0.75rem 0.9rem;
 	}
+	.rich-editor :global(a) {
+		border-radius: 0.18rem;
+		background: oklch(0.92 0.06 200 / 0.7);
+		color: oklch(0.36 0.15 245);
+		font-weight: 850;
+		text-decoration-line: underline;
+		text-decoration-thickness: 0.11em;
+		text-underline-offset: 0.18em;
+	}
+	.rich-editor :global([data-link-selection='true']) {
+		border-radius: 0.2rem;
+		background: oklch(0.88 0.09 95 / 0.86);
+		box-shadow: 0 0 0 2px oklch(0.74 0.16 75 / 0.48);
+	}
 	.rich-modal__ghost {
 		padding: 0.48rem 0.7rem;
 	}
@@ -726,7 +1066,7 @@
 	}
 	.rich-inspector__open:focus-visible,
 	.rich-modal button:focus-visible,
-	.rich-link-panel input:focus-visible {
+	.rich-link-bubble input:focus-visible {
 		outline: 3px solid var(--pixel-cyan);
 		outline-offset: 2px;
 	}
@@ -741,16 +1081,16 @@
 			width: 100%;
 			box-shadow: none;
 		}
-		.rich-link-panel,
 		.rich-modal__header {
 			align-items: stretch;
 			flex-direction: column;
 		}
-		.rich-link-panel {
+		.rich-modal__body {
 			grid-template-columns: 1fr;
+			overflow: auto;
 		}
-		.rich-link-panel__actions {
-			flex-wrap: wrap;
+		.rich-editor {
+			min-height: 18rem;
 		}
 	}
 </style>

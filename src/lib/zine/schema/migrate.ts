@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { getBlock } from '../registry';
+import { pinnedContentProblem } from '../render/pinned';
 import { paletteById } from '../theme/registry';
 import { CURRENT_SCHEMA_VERSION, ZineDocumentSchema, type ZineDocument } from './document';
 import { SECTION_LAYOUTS, type SectionKind, type SectionLayout } from './theme';
@@ -229,7 +230,13 @@ const migrations: Record<number, Migration> = {
 	},
 	// v4 → v5 adds the optional Element.placement field. Nothing to transform — existing
 	// elements default to 'flow' (absent) — so this is a pure version advance (lossless).
-	4: (doc) => ({ ...doc, schemaVersion: 5 })
+	4: (doc) => ({ ...doc, schemaVersion: 5 }),
+	// v5 → v6 adds the optional `pinned` placement + Element.anchor and BlockStyle.typeset.
+	// All new fields are optional with safe defaults, so this is a pure version advance.
+	5: (doc) => ({ ...doc, schemaVersion: 6 }),
+	// v6 → v7 adds the optional document-level `pacing` (scene-continuity preset). Absent =
+	// the renderer's 'cozy' default, so this is a pure version advance (lossless).
+	6: (doc) => ({ ...doc, schemaVersion: 7 })
 };
 
 export class DocumentError extends Error {
@@ -305,6 +312,14 @@ export function publishBlockers(doc: ZineDocument): string[] {
 					blockers.push(
 						`Act ${ai + 1}, scene ${si + 1}, element ${ei + 1} (${block.type}): ${message}`
 					);
+				}
+				if (element.placement === 'pinned') {
+					const problem = pinnedContentProblem(block);
+					if (problem) {
+						blockers.push(
+							`Act ${ai + 1}, scene ${si + 1}, element ${ei + 1} (${block.type}): ${problem}`
+						);
+					}
 				}
 			})
 		)

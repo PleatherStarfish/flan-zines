@@ -3,6 +3,7 @@
 	import { effectsForSlot, getBlock, getEffect } from '$lib/zine/registry';
 	import type { AnyAnimationDef, EffectSlot } from '$lib/zine/schema/animation';
 	import type { Element } from '$lib/zine/schema/document';
+	import { textKindForElement } from '$lib/zine/render/typeset';
 	import type { EditorStore } from './store.svelte';
 
 	// The rail should answer one question at a time. Effects are mutually exclusive per slot,
@@ -21,9 +22,12 @@
 	];
 
 	const allowed = $derived(new Set(getBlock(element.block.type)?.allowedAnimations ?? []));
+	const textKind = $derived(textKindForElement(element));
 	const anyOptions = $derived(sections.some((section) => optionsFor(section).length > 0));
 
 	function optionsFor(section: SlotSection): AnyAnimationDef[] {
+		if (element.placement === 'pinned' && section.slot === 'motion') return [];
+		if (textKind === 'content' && section.slot === 'motion') return [];
 		return effectsForSlot(section.slot, section.group).filter((def) => allowed.has(def.type));
 	}
 
@@ -87,9 +91,9 @@
 	}
 </script>
 
-<section class="effect-picker" aria-label="Motion">
+<section class="effect-picker" aria-label="Animation">
 	<div class="effect-picker__intro">
-		<h3>Motion</h3>
+		<h3>Animation</h3>
 		<p>Pick a simple behavior. Open fine tuning only when the timing needs a nudge.</p>
 	</div>
 

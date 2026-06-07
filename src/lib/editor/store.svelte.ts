@@ -8,6 +8,8 @@ import type {
 	Element,
 	ElementPlacement,
 	ElementTrack,
+	Pacing,
+	PinRegion,
 	Scene,
 	SceneAxis,
 	SceneBackground,
@@ -18,7 +20,16 @@ import type {
 import { PathParamsSchema, type Waypoint } from '$lib/zine/animations/path';
 import { parseDocument } from '$lib/zine/schema/migrate';
 import { BlockStyleSchema, type BlockStyle, type SectionKind } from '$lib/zine/schema/theme';
-import type { Theme, ThemeColors, ThemeRole } from '$lib/zine/schema/theme';
+import type {
+	TextKind,
+	Theme,
+	ThemeColors,
+	ThemeRole,
+	Typeset,
+	TypesetRole
+} from '$lib/zine/schema/theme';
+import { clampNudge, pinnedContentProblem } from '$lib/zine/render/pinned';
+import { defaultContentRole, isTextBlockType, textKindForElement } from '$lib/zine/render/typeset';
 import { resolveThemeColors, themeSwatches } from '$lib/zine/theme/registry';
 import type { AnimationDescriptor, EffectRef } from '$lib/zine/schema/animation';
 import { newActId, newBeatId, newBlockId, newElementId, newSceneId } from './ids';
@@ -104,7 +115,7 @@ type DraftShadow = Omit<z.infer<typeof DraftShadowSchema>, 'document'> & {
 };
 
 export class EditorStore {
-	doc = $state<ZineDocument>({ schemaVersion: 5, acts: [] });
+	doc = $state<ZineDocument>({ schemaVersion: 7, acts: [] });
 	selectedId = $state<string | null>(null);
 	mode = $state<'edit' | 'preview'>('edit');
 	saveStatus = $state<SaveStatus>('idle');
@@ -404,7 +415,11 @@ export class EditorStore {
 	updateElementBlockProps(elementId: string, props: unknown): void {
 		this.mutate((draft) => {
 			const element = findElement(draft, elementId)?.element;
-			if (element) element.block.props = props;
+			if (!element) return;
+			element.block.props = props;
+			if (element.placement === 'pinned' && pinnedContentProblem(element.block)) {
+				moveElementToFlow(element);
+			}
 		});
 	}
 	updateElementTrack(elementId: string, track: ElementTrack): void {
@@ -450,26 +465,143 @@ export class EditorStore {
 		this.mutate((draft) => {
 			const element = findElement(draft, elementId)?.element;
 			if (!element) return;
+			if (slot === 'motion' && element.placement === 'pinned') {
+				if (!ref) delete element.motion;
+				return;
+			}
+			if (slot === 'motion' && ref && textKindForElement(element) === 'content') {
+				setTextKindOnElement(element, 'other');
+			}
 			if (ref) element[slot] = ref;
 			else delete element[slot];
 		});
 	}
-	/** Set (or clear, with `undefined`/`flow`) an element's placement — `free` = a sprite that
-	 *  floats over the scene, positioned by its path motion. */
+	/** Set (or clear, with `undefined`/`flow`) an element's placement. `free` = a path-driven
+	 *  sprite; `pinned` = content anchored to a screen region. v1 refuses to PIN a block whose
+	 *  content is focusable or too large to fit comfortably on screen. */
 	setElementPlacement(elementId: string, placement: ElementPlacement | undefined): void {
 		this.mutate((draft) => {
-			const element = findElement(draft, elementId)?.element;
-			if (!element) return;
+			const found = findElement(draft, elementId);
+			if (!found) return;
+			const { scene, element } = found;
 			if (placement === 'free') {
+				if (isTextBlockType(element.block.type)) setTextKindOnElement(element, 'other');
 				element.placement = 'free';
+				delete element.anchor;
+			} else if (placement === 'pinned') {
+				pinElement(scene, element);
 			} else {
-				delete element.placement;
-				// A `path` motion only makes sense for a free sprite (it positions in stage
-				// space). Leaving it on a flow element would render off-stage, so drop it —
-				// placement and a path motion stay consistent.
-				if (element.motion?.type === 'path') delete element.motion;
+				moveElementToFlow(element);
 			}
 		});
+	}
+
+	/** True when an element's block may be pinned. For UI gating. */
+	canPin(elementId: string): boolean {
+		const element = findElement(this.doc, elementId)?.element;
+		return element ? !pinnedContentProblem(element.block) : false;
+	}
+
+	/** Set a pinned element's screen region (makes it `pinned` if it wasn't). */
+	setElementAnchorRegion(elementId: string, region: PinRegion): void {
+		this.mutate((draft) => {
+			const found = findElement(draft, elementId);
+			if (!found || !pinElement(found.scene, found.element)) return;
+			const element = found.element;
+			element.anchor = { region, dx: element.anchor?.dx ?? 0, dy: element.anchor?.dy ?? 0 };
+		});
+	}
+
+	/** Nudge a pinned element by one step on an axis ("move left/right/up/down"), clamped. */
+	nudgeAnchor(elementId: string, axis: 'x' | 'y', delta: number): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (!element?.anchor) return;
+			if (axis === 'x') element.anchor.dx = clampNudge(element.anchor.dx + delta);
+			else element.anchor.dy = clampNudge(element.anchor.dy + delta);
+		});
+	}
+
+	/** Reset a pinned element back to its bare region (no nudge). */
+	resetAnchorNudge(elementId: string): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (!element?.anchor) return;
+			element.anchor.dx = 0;
+			element.anchor.dy = 0;
+		});
+	}
+
+	/** Merge editorial typeset fields onto a text block (validated; empties cleared). */
+	setTypeset(elementId: string, partial: Partial<Typeset>): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (!element || !isTextBlockType(element.block.type)) return;
+			const nextTypeset: Record<string, unknown> = {
+				...(element.block.style?.typeset ?? {}),
+				...partial
+			};
+			if (nextTypeset.kind !== 'other') nextTypeset.kind = 'content';
+			for (const key of Object.keys(nextTypeset)) {
+				if (nextTypeset[key] === undefined || nextTypeset[key] === null) delete nextTypeset[key];
+			}
+			const nextStyle: Record<string, unknown> = { ...(element.block.style ?? {}) };
+			if (Object.keys(nextTypeset).length) nextStyle.typeset = nextTypeset;
+			else delete nextStyle.typeset;
+			const parsed = BlockStyleSchema.safeParse(nextStyle);
+			if (!parsed.success) return;
+			if (Object.keys(parsed.data).length) element.block.style = parsed.data;
+			else delete element.block.style;
+		});
+	}
+
+	/** Apply an editorial role preset (or clear it). */
+	setTypesetRole(elementId: string, role: TypesetRole | undefined): void {
+		this.setTypeset(elementId, { role });
+	}
+
+	/** Switch a text block between editorial content and freer diagram/label text. */
+	setTextKind(elementId: string, kind: TextKind): void {
+		this.mutate((draft) => {
+			const element = findElement(draft, elementId)?.element;
+			if (!element || !isTextBlockType(element.block.type)) return;
+			setTextKindOnElement(element, kind);
+		});
+	}
+
+	/** Add a pinned heading that animates in after the previous pinned clip (the "one at a time"
+	 *  sequence). Promotes a `page` scene to a timeline (`reveal`) scene so there's middle scroll
+	 *  to sequence within — a one-way, content-lossless change. */
+	addPinnedText(sceneId: string): string | null {
+		const headingDef = getBlock('heading');
+		if (!headingDef) return null;
+		const id = newElementId();
+		const blockId = newBlockId();
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (!scene) return;
+			promoteSceneForPinned(scene);
+			const pinned = scene.elements.filter((element) => element.placement === 'pinned');
+			const prev = pinned.at(-1);
+			const start = prev ? Math.min(0.8, roundProgress(prev.range.start + 0.3)) : 0;
+			const props =
+				headingDef.schema.safeParse({ text: 'New point', level: 2 }).data ?? headingDef.defaults;
+			scene.elements.push({
+				id,
+				track: 'content',
+				block: {
+					id: blockId,
+					type: 'heading',
+					props,
+					style: { typeset: { kind: 'other' } }
+				} as Block,
+				range: rangeFromStart(start, 0.42),
+				placement: 'pinned',
+				anchor: { region: 'center', dx: 0, dy: 0 }
+			});
+		});
+		this.selectedId = id;
+		return id;
 	}
 	/** Make an element a free sprite that follows `waypoints` on scroll (the `path` motion). */
 	setElementPath(elementId: string, waypoints: Waypoint[]): void {
@@ -479,6 +611,8 @@ export class EditorStore {
 			const element = findElement(draft, elementId)?.element;
 			if (!element) return;
 			element.placement = 'free';
+			delete element.anchor;
+			if (isTextBlockType(element.block.type)) setTextKindOnElement(element, 'other');
 			element.motion = {
 				type: 'path',
 				params: { waypoints: structuredClone(parsed.data.waypoints) }
@@ -579,6 +713,16 @@ export class EditorStore {
 	}
 	removeBlock(elementId: string): void {
 		this.removeElement(elementId);
+	}
+
+	// ── scene continuity ───────────────────────────────────────────────────────
+	/** Set (or clear, with `undefined`) the document pacing — how much scenes breathe and how
+	 *  soft the backdrop crossfade is. Absent = the renderer's 'cozy' default. */
+	setPacing(pacing: Pacing | undefined): void {
+		this.mutate((draft) => {
+			if (pacing) draft.pacing = pacing;
+			else delete draft.pacing;
+		});
 	}
 
 	// ── theme ─────────────────────────────────────────────────────────────────
@@ -723,6 +867,49 @@ function findElement(
 		}
 	}
 	return undefined;
+}
+
+function promoteSceneForPinned(scene: Scene): void {
+	if (scene.type !== 'page') return;
+	scene.type = 'reveal';
+	if (scene.length === 'auto') scene.length = 'long';
+}
+
+function pinElement(scene: Scene, element: Element): boolean {
+	if (pinnedContentProblem(element.block)) return false;
+	if (isTextBlockType(element.block.type)) setTextKindOnElement(element, 'other');
+	promoteSceneForPinned(scene);
+	element.placement = 'pinned';
+	if (!element.anchor) element.anchor = { region: 'center', dx: 0, dy: 0 };
+	// v1 pinned actors may enter/exit, but they do not run sustained motion while held.
+	delete element.motion;
+	return true;
+}
+
+function setTextKindOnElement(element: Element, kind: TextKind): void {
+	if (!isTextBlockType(element.block.type)) return;
+	const nextStyle: BlockStyle = { ...(element.block.style ?? {}) };
+	if (kind === 'content') {
+		moveElementToFlow(element);
+		delete element.motion;
+		nextStyle.typeset = {
+			...(nextStyle.typeset ?? {}),
+			kind: 'content',
+			role: nextStyle.typeset?.role ?? defaultContentRole(element.block.type)
+		};
+	} else {
+		nextStyle.typeset = { kind: 'other' };
+	}
+	if (Object.keys(nextStyle).length) element.block.style = nextStyle;
+	else delete element.block.style;
+}
+
+function moveElementToFlow(element: Element): void {
+	delete element.placement;
+	delete element.anchor;
+	// A `path` motion only makes sense for a free sprite; drop it so placement and motion stay
+	// consistent when the element returns to the story.
+	if (element.motion?.type === 'path') delete element.motion;
 }
 
 function sectionKindToSceneType(kind: SectionKind): SceneType {

@@ -16,12 +16,16 @@
 		progress = 0,
 		pinned = false,
 		framed = false,
+		live = true,
 		themePalette = []
 	}: {
 		background?: SceneBackground;
 		progress?: number;
 		pinned?: boolean;
 		framed?: boolean;
+		/** When false, a canvas preset's runtime is NOT mounted (its slot is invisible in the
+		 *  crossfade) — so at most two runtimes are ever alive at a transition seam. */
+		live?: boolean;
 		/** Theme swatch colours (RGB) a theme-aware canvas preset paints with. */
 		themePalette?: [number, number, number][];
 	} = $props();
@@ -55,6 +59,7 @@
 		const canvas = canvasEl;
 		const current = fill;
 		const reduced = rm;
+		if (!live) return; // backdrop crossfade gates this so only visible slots run a loop
 		if (!canvas || current?.kind !== 'canvas') return;
 		const def = getBackground(current.preset);
 		if (!def) return;
@@ -145,7 +150,7 @@
 		overflow: hidden;
 		pointer-events: none;
 	}
-	/* Pinned scenes: a full-viewport sticky backdrop behind the pinned content. `dvh` fills the
+	/* Pinned scenes: a full-viewport sticky backdrop behind the pinned actors. `dvh` fills the
 	   visible viewport (navbar-aware) so the backdrop never leaves a strip uncovered; the canvas
 	   reads its real px size from a ResizeObserver, so a height change just re-sizes it. `vh` is
 	   the fallback for old engines. */

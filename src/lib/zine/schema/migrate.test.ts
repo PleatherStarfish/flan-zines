@@ -31,7 +31,7 @@ describe('document migrations', () => {
 				{ id: 'sec_c', layout: 'split', blocks: [] }
 			]
 		});
-		expect(raw.schemaVersion).toBe(5);
+		expect(raw.schemaVersion).toBe(7);
 		const acts = raw.acts as Array<{ scenes: Array<Record<string, unknown>> }>;
 		expect(acts).toHaveLength(1);
 		expect(acts[0].scenes.map((scene) => scene.type)).toEqual(['page', 'feature', 'feature']);
@@ -57,7 +57,7 @@ describe('document migrations', () => {
 			]
 		});
 
-		expect(doc.schemaVersion).toBe(5);
+		expect(doc.schemaVersion).toBe(7);
 		expect(doc.acts).toHaveLength(1);
 		expect(doc.acts[0].scenes.map((scene) => scene.type)).toEqual(['feature', 'page']);
 		expect(doc.acts[0].scenes[0].presentation).toEqual({
@@ -127,7 +127,7 @@ describe('document migrations', () => {
 			theme: { palette: 'dusk', fontPair: 'mono', accent: '#38bdf8' },
 			acts: [{ id: 'act_1', scenes: [] }]
 		});
-		expect(doc.schemaVersion).toBe(5);
+		expect(doc.schemaVersion).toBe(7);
 		// Legacy keys resolve to the same colours the dusk palette rendered (appearance preserved).
 		expect(doc.theme?.colors).toEqual({
 			background: '#161a23',
@@ -146,17 +146,63 @@ describe('document migrations', () => {
 
 	it('leaves a themeless v3 document themeless after the 3→4 migration', () => {
 		const doc = parseDocument({ schemaVersion: 3, acts: [{ id: 'act_1', scenes: [] }] });
-		expect(doc.schemaVersion).toBe(5);
+		expect(doc.schemaVersion).toBe(7);
 		expect(doc.theme).toBeUndefined();
 	});
 
-	it('advances a v4 document to v5 unchanged (placement is additive)', () => {
+	it('advances a v4 document to the current version unchanged (placement is additive)', () => {
 		const raw = migrateToLatest({
 			schemaVersion: 4,
 			theme: { colors: undefined },
 			acts: [{ id: 'act_1', scenes: [] }]
 		});
-		expect(raw.schemaVersion).toBe(5);
+		expect(raw.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		expect(raw.acts).toEqual([{ id: 'act_1', scenes: [] }]);
+	});
+
+	it('advances a v6 document to v7 unchanged (pacing is additive)', () => {
+		const raw = migrateToLatest({ schemaVersion: 6, acts: [{ id: 'act_1', scenes: [] }] });
+		expect(raw.schemaVersion).toBe(7);
+		expect(raw.acts).toEqual([{ id: 'act_1', scenes: [] }]);
+		// a document-level pacing carries through and parses
+		const withPacing = parseDocument({
+			schemaVersion: 6,
+			pacing: 'roomy',
+			acts: [{ id: 'act_1', scenes: [] }]
+		});
+		expect(withPacing.pacing).toBe('roomy');
+	});
+
+	it('advances a v5 document to the current version unchanged (placement + typeset additive)', () => {
+		const v5 = {
+			schemaVersion: 5,
+			acts: [
+				{
+					id: 'act_1',
+					scenes: [
+						{
+							id: 'scn_1',
+							type: 'reveal',
+							length: 'long',
+							beats: [{ id: 'beat_1', at: 0 }],
+							elements: [
+								{
+									id: 'el_1',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: { id: 'blk_1', type: 'heading', props: { text: 'Hi', level: 2 } }
+								}
+							]
+						}
+					]
+				}
+			]
+		};
+		const raw = migrateToLatest(structuredClone(v5));
+		expect(raw.schemaVersion).toBe(7);
+		// Lossless: identical apart from the version field.
+		expect({ ...raw, schemaVersion: 5 }).toEqual(v5);
+		// And it parses cleanly as a current document.
+		expect(parseDocument(structuredClone(v5)).schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 	});
 });

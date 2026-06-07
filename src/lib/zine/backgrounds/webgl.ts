@@ -55,7 +55,11 @@ export function createFullscreenProgram(
 		alpha: true,
 		premultipliedAlpha: false,
 		depth: false,
-		powerPreference: 'low-power'
+		powerPreference: 'low-power',
+		// Retain the last drawn frame after the loop stops, so a backdrop crossfade can hold a
+		// FROZEN final frame while a WebGL scene fades out (the single-live-runtime handoff).
+		// Small cost; the alternative is a same-frame capture.
+		preserveDrawingBuffer: true
 	});
 	if (!gl) return null;
 

@@ -3,10 +3,12 @@
 	import type { Element, Scene, SceneType, ZineDocument } from '$lib/zine/schema/document';
 	import BlockInspector from './BlockInspector.svelte';
 	import EffectPicker from './EffectPicker.svelte';
+	import PlacementPicker from './PlacementPicker.svelte';
 	import SectionInspector from './SectionInspector.svelte';
 	import SceneTimeline from './SceneTimeline.svelte';
 	import PathEditor from './PathEditor.svelte';
 	import type { EditorStore } from './store.svelte';
+	import { textKindForElement } from '$lib/zine/render/typeset';
 
 	let { store, sceneId, onBack }: { store: EditorStore; sceneId: string; onBack: () => void } =
 		$props();
@@ -31,10 +33,13 @@
 	const selectedBlock = $derived(
 		store.selectedBlock?.sceneId === sceneId ? store.selectedBlock : null
 	);
+	const selectedTextKind = $derived(
+		selectedBlock ? textKindForElement(selectedBlock.element) : undefined
+	);
 	const document = $derived<ZineDocument | null>(
 		scene
 			? {
-					schemaVersion: 5,
+					schemaVersion: 7,
 					theme: store.doc.theme,
 					acts: [{ id: 'act_scene_editor', scenes: [scene] }]
 				}
@@ -112,6 +117,9 @@
 							</button>
 						</section>
 						<BlockInspector {store} element={selectedBlock.element} />
+						{#if selectedTextKind !== 'content'}
+							<PlacementPicker {store} element={selectedBlock.element} {scene} />
+						{/if}
 						<EffectPicker {store} element={selectedBlock.element} onEditPath={openPathEditor} />
 					{/key}
 				{:else}

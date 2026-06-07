@@ -20,7 +20,7 @@ export const SectionPresentationSchema = z.object({
 });
 export type SectionPresentation = z.infer<typeof SectionPresentationSchema>;
 
-export const BLOCK_ALIGNMENTS = ['left', 'center', 'right'] as const;
+export const BLOCK_ALIGNMENTS = ['left', 'center', 'right', 'justify'] as const;
 
 // Author-controlled values that become inline CSS must be deliberately narrow.
 // Step 2 supports hex colors only; richer palette-token resolution arrives with
@@ -38,18 +38,67 @@ export const TEXT_BACKDROP_SHAPES = ['box', 'circle'] as const;
 export const TextBackdropShapeSchema = z.enum(TEXT_BACKDROP_SHAPES);
 export type TextBackdropShape = z.infer<typeof TextBackdropShapeSchema>;
 
+const LEGACY_TEXT_BACKDROP_PADDINGS: Record<string, number> = {
+	tight: 0.55,
+	cozy: 1,
+	roomy: 1.55
+};
+export const TextBackdropPaddingSchema = z.preprocess(
+	(value) => (typeof value === 'string' ? (LEGACY_TEXT_BACKDROP_PADDINGS[value] ?? value) : value),
+	z.number().min(0).max(4)
+);
+export type TextBackdropPadding = z.infer<typeof TextBackdropPaddingSchema>;
+
 export const TextBackdropSchema = z.object({
 	shape: TextBackdropShapeSchema,
 	color: HexColorSchema,
-	opacity: z.number().min(0).max(1).default(0.72)
+	opacity: z.number().min(0).max(1).default(0.72),
+	padding: TextBackdropPaddingSchema.optional()
 });
 export type TextBackdrop = z.infer<typeof TextBackdropSchema>;
 
+// Editorial typesetting (docs/design/pinned-content-and-typesetting.md, Part B). A `role` is a
+// one-tap preset (magazine roles); the rest are bounded chips. All injection-safe enums — the
+// renderer resolves these to a measure/leading/etc. via the pure `resolveTypeset()` helper
+// (author ≡ published). Defaults are the typographically correct ones (45–75ch measure,
+// flush-left, body leading floor 1.45). v1 ships these; dropCap/columns are reserved for v2.
+export const TYPESET_ROLES = [
+	'headline',
+	'kicker',
+	'deck',
+	'body',
+	'pullquote',
+	'blockquote',
+	'caption',
+	'byline'
+] as const;
+export const TypesetRoleSchema = z.enum(TYPESET_ROLES);
+export type TypesetRole = z.infer<typeof TypesetRoleSchema>;
+
+export const TYPESET_MEASURES = ['narrow', 'medium', 'wide'] as const;
+export const TYPESET_LEADINGS = ['tight', 'cozy', 'airy'] as const;
+export const TYPESET_CASES = ['normal', 'upper', 'smallcaps'] as const;
+export const TEXT_KINDS = ['content', 'other'] as const;
+export const TextKindSchema = z.enum(TEXT_KINDS);
+export type TextKind = z.infer<typeof TextKindSchema>;
+
+export const TypesetSchema = z.object({
+	kind: TextKindSchema.optional(),
+	role: TypesetRoleSchema.optional(),
+	measure: z.enum(TYPESET_MEASURES).optional(),
+	leading: z.enum(TYPESET_LEADINGS).optional(),
+	case: z.enum(TYPESET_CASES).optional(),
+	tidyWrap: z.boolean().optional()
+});
+export type Typeset = z.infer<typeof TypesetSchema>;
+
 export const BlockStyleSchema = z.object({
 	align: z.enum(BLOCK_ALIGNMENTS).optional(),
-	// Explicit readability treatment for text blocks. Default is absent/transparent.
+	textColor: HexColorSchema.optional(),
+	// Explicit background treatment for text blocks. Default is absent/transparent.
 	// Rendered tightly around the text content, never as a full-width bar.
-	textBackdrop: TextBackdropSchema.optional()
+	textBackdrop: TextBackdropSchema.optional(),
+	typeset: TypesetSchema.optional()
 });
 export type BlockStyle = z.infer<typeof BlockStyleSchema>;
 

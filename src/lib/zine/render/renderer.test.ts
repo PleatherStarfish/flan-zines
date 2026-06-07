@@ -82,7 +82,7 @@ describe('ZineRenderer', () => {
 
 	it('applies timeline scrub state only when the editor preview provides scene progress', () => {
 		const document = parseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			theme: {},
 			acts: [
 				{
@@ -112,7 +112,9 @@ describe('ZineRenderer', () => {
 		}) satisfies ZineDocument;
 
 		const staticRender = render(ZineRenderer, { props: { document } });
-		expect(staticRender.container.querySelector('.zine-block')?.getAttribute('style')).toBeNull();
+		expect(staticRender.container.querySelector('.zine-block')?.getAttribute('style')).not.toMatch(
+			/opacity/
+		);
 		staticRender.unmount();
 
 		// Scrubbed before the clip's range (0.5–0.8): the element is faded out by the
@@ -136,7 +138,7 @@ describe('ZineRenderer', () => {
 
 	it('applies element row order as front-to-back z-index', () => {
 		const document = parseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			acts: [
 				{
 					id: 'act',
@@ -197,9 +199,9 @@ describe('ZineRenderer', () => {
 		unmount();
 	});
 
-	it('renders text blocks transparent by default, with explicit tight readability backdrops', () => {
+	it('renders text blocks without backdrops by default, with explicit tight readability backdrops', () => {
 		const document = parseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			acts: [
 				{
 					id: 'act',
@@ -262,7 +264,7 @@ describe('ZineRenderer', () => {
 		const { container } = render(ZineRenderer, { props: { document } });
 		const blocks = container.querySelectorAll('.zine-block');
 		expect(blocks[0].hasAttribute('data-text-backdrop')).toBe(false);
-		expect(blocks[0].getAttribute('style')).toBeNull();
+		expect(blocks[0].getAttribute('style')).not.toMatch(/--zine-text-backdrop/);
 
 		expect(blocks[1].getAttribute('data-text-backdrop')).toBe('box');
 		expect(blocks[1].getAttribute('style')).toMatch(/--zine-text-backdrop-color:\s*#14181f/);
@@ -277,7 +279,7 @@ describe('ZineRenderer', () => {
 
 	it('keeps free text transparent over canvas scene backgrounds unless a backdrop is explicit', () => {
 		const document = parseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			theme: {
 				colors: {
 					background: '#F4EAD5',
@@ -356,7 +358,7 @@ describe('ZineRenderer', () => {
 	it('sizes and pins a timeline scene to its scroll distance, but leaves page scenes in flow', () => {
 		const make = (type: string, scrollLength?: number) =>
 			parseDocument({
-				schemaVersion: 5,
+				schemaVersion: 7,
 				acts: [
 					{
 						id: 'act',
@@ -415,7 +417,7 @@ describe('ZineRenderer', () => {
 
 	it('renders a side-scroll scene as a stage of actors that pans with scroll progress', () => {
 		const document = parseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			acts: [
 				{
 					id: 'act',
@@ -474,7 +476,7 @@ describe('ZineRenderer', () => {
 		})) as typeof window.matchMedia;
 		try {
 			const document = parseDocument({
-				schemaVersion: 5,
+				schemaVersion: 7,
 				acts: [
 					{
 						id: 'act',

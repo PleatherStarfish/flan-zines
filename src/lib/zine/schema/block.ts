@@ -1,6 +1,7 @@
 import type { Component } from 'svelte';
 import type { ZodType } from 'zod';
 import type { AnimationType } from './types';
+import type { BlockStyle, TextKind, Theme } from './theme';
 
 // The block extension contract (IMPLEMENTATION_PLAN.md §2, data-model.md §5). A block
 // is one module satisfying this interface; register it and the validator, renderer,
@@ -23,6 +24,11 @@ export interface BlockRenderProps<P> {
 export interface BlockInspectorProps<P> {
 	value: P;
 	onChange: (next: P) => void;
+	style?: BlockStyle;
+	onStyleChange?: (next: BlockStyle) => void;
+	textKind?: TextKind;
+	onTextKindChange?: (kind: TextKind) => void;
+	theme?: Theme;
 }
 
 // Structured accessibility fallback for blocks whose visual output is opaque to

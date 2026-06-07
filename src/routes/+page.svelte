@@ -14,8 +14,8 @@
 			<span class="pixel-badge">Student arcade</span>
 			<a href="/login" class="pixel-button gallery-home__login">Sign in</a>
 		</div>
-		<h1 class="pixel-title">Flan Zines</h1>
-		<p>Build visual essays like handmade magazines that learned to side-scroll.</p>
+		<h1 class="pixel-title">Jiggly Flan</h1>
+		<p>An animated zine builder for creative storytelling</p>
 		<div class="gallery-home__actions">
 			<a
 				href="/z/riverwild/hidden-rivers-under-the-city"

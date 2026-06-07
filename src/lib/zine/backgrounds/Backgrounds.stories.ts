@@ -17,7 +17,7 @@ const SCENE_ID = 'scn_gradient';
 
 function gradientDoc(params: Partial<OrganicGradientParams>) {
 	return parseDocument({
-		schemaVersion: 5,
+		schemaVersion: 7,
 		theme: {
 			swatches: ['#1d3557', '#457b9d', '#a8dadc', '#f1faee', '#e63946'],
 			colors: {

@@ -10,7 +10,11 @@
 	import { reducedMotion } from '$lib/a11y/reduced-motion';
 	import BlockFrame from './BlockFrame.svelte';
 	import SceneBackground from './SceneBackground.svelte';
+	import Backdrop from './Backdrop.svelte';
 	import { composeElementStyle, type EffectImplMap } from './timeline';
+	import { pinNudgeStyle, pinRegion } from './pinned';
+	import { textKindForElement } from './typeset';
+	import { backdropPlan, gapScreens, type Pacing } from './transitions';
 
 	// Story → page. Reads ONLY the registries (no hard-coded block/effect list) and
 	// imports nothing from the editor — the same component renders the public page and
@@ -50,6 +54,55 @@
 	const themePalette = $derived(themeSwatchesRgb(document.theme));
 	const rm = $derived($reducedMotion);
 	const framedViewport = $derived(viewport === 'frame');
+
+	// Narrow screens collapse `pinned` content to readable stacked flow (the Pudding "stack it"
+	// fallback): absolute corner-anchoring would overlap on a phone. CSS below applies this at
+	// first paint; JS mirrors it after hydration so pinned actors move into source-order DOM.
+	// The editor's fixed laptop frame is exempt so the preview shows the pinned layout. Shares the
+	// 700px breakpoint with the CSS in this file.
+	let narrow = $state(false);
+	$effect(() => {
+		if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+		const mql = window.matchMedia('(max-width: 700px)');
+		const update = () => (narrow = mql.matches);
+		update();
+		mql.addEventListener('change', update);
+		return () => mql.removeEventListener('change', update);
+	});
+	// `pinned` content lays out in normal flow (not the viewport overlay) when reduced motion is on
+	// OR the screen is narrow — both want a stacked, readable article.
+	const collapsed = $derived(rm || (narrow && !framedViewport));
+
+	// Scene continuity (transitions.ts): the document `pacing` preset drives the crossfading
+	// backdrop + the breathing-room gap between scenes.
+	//
+	// IMPORTANT — the crossfading backdrop is a progressive ENHANCEMENT of the driven, full-page
+	// reader, NOT the source of truth for backgrounds. SSR / no-JS / reduced motion / scrubbed or
+	// framed previews keep PER-SCENE in-section backgrounds (the readable baseline), so a
+	// background never depends on JS to appear. `mounted` only flips true on the client after
+	// hydration, so SSR and the first hydration render match (no mismatch); then we enhance to the
+	// single fixed crossfade layer. (Fixes the earlier bug where backgrounds vanished because a
+	// z-index:-1 fixed layer was painted behind the article's own opaque background.)
+	const pacing = $derived<Pacing>((document.pacing ?? 'cozy') as Pacing);
+	const allScenes = $derived(document.acts.flatMap((act) => act.scenes));
+	let mounted = $state(false);
+	$effect(() => {
+		mounted = true;
+	});
+	const enhanced = $derived(mounted && !rm && drive && pinScenes && !framedViewport);
+	// Per-scene backdrop opacity (the crossfade), filled by the driven measure below. Falls back
+	// so the first hydration frame still shows a coherent first scene before the measure runs.
+	let backdropOpacity = $state<Record<string, number>>({});
+	const resolvedBackdropOpacity = $derived.by(() => {
+		if (Object.keys(backdropOpacity).length) return backdropOpacity;
+		const out: Record<string, number> = {};
+		allScenes.forEach((scene, i) => {
+			out[scene.id] = sceneProgress[scene.id] != null || i === 0 ? 1 : 0;
+		});
+		return out;
+	});
+	const backdropProgressFor = (id: string): number => progressFor(id) ?? 0;
+	const gapStyle = $derived(`--zine-gap:${(gapScreens(pacing) * 100).toFixed(1)}svh`);
 
 	// Effect ids actually used anywhere in the document.
 	const usedEffects = $derived.by(() => {
@@ -114,14 +167,21 @@
 			frame = 0;
 			const vh = window.innerHeight || 1;
 			const next: Record<string, number> = {};
+			const rects: { id: string; top: number; bottom: number }[] = [];
 			for (const el of root.querySelectorAll<HTMLElement>('[data-scene-id]')) {
 				const id = el.dataset.sceneId;
 				if (!id) continue;
 				const rect = el.getBoundingClientRect();
 				const total = rect.height + vh;
 				next[id] = total > 0 ? Math.max(0, Math.min(1, (vh - rect.top) / total)) : 0;
+				rects.push({ id, top: rect.top, bottom: rect.bottom });
 			}
 			driven = next;
+			// Same single rAF-throttled measure also drives the backdrop crossfade (no extra
+			// scroll listener — Pudding §6).
+			backdropOpacity = Object.fromEntries(
+				backdropPlan(rects, vh, pacing).map((slot) => [slot.id, slot.opacity])
+			);
 		};
 		const onScroll = () => {
 			if (!frame) frame = requestAnimationFrame(measure);
@@ -148,27 +208,37 @@
 		return scene.background?.fill?.kind === 'canvas';
 	}
 
-	// `free` elements are sprites that float over the scene on a path. Under reduced motion they
-	// fall back to normal in-flow source order (fully readable, no overlay), so `free` only
-	// applies when motion is on. Keyed off the general `placement` field, never the effect type.
-	function hasFreeElements(scene: Scene): boolean {
-		return !rm && scene.elements.some((element) => element.placement === 'free');
-	}
+	// Stage elements float over the scene in the viewport-fixed overlay: `free` = a path-driven
+	// sprite; `pinned` = content anchored to a screen region. Under reduced motion both fall back
+	// to normal in-flow source order (fully readable, no overlay). `pinned` ALSO collapses to flow
+	// on a narrow screen (`collapsed`); `free` sprites stay on the stage there (decorative).
 	function freeElementsFor(scene: Scene): Element[] {
 		return rm ? [] : scene.elements.filter((element) => element.placement === 'free');
 	}
+	function pinnedElementsFor(scene: Scene): Element[] {
+		return collapsed ? [] : scene.elements.filter((element) => element.placement === 'pinned');
+	}
 	function flowElementsFor(scene: Scene): Element[] {
-		return rm ? scene.elements : scene.elements.filter((element) => element.placement !== 'free');
+		if (rm) return scene.elements; // reduced motion: everything in readable source order
+		return scene.elements.filter((element) => {
+			if (element.placement === 'free') return false; // free → stage
+			if (element.placement === 'pinned') return collapsed; // pinned → flow only when collapsed
+			return true;
+		});
+	}
+	function hasStageElements(scene: Scene): boolean {
+		return freeElementsFor(scene).length > 0 || pinnedElementsFor(scene).length > 0;
 	}
 
 	function isPinned(scene: Scene): boolean {
 		// Under reduced motion every scene lays out in normal source order (scene-timeline.md
 		// §8) — no tall pinned region to scroll past, just a readable page. A canvas background
-		// or free sprites pin so they get a full-screen, viewport-fixed stage to play over.
+		// or stage elements (free sprites / pinned actors) pin so they get a full-screen,
+		// viewport-fixed stage to play over.
 		return (
 			pinScenes &&
 			!rm &&
-			(scene.type !== 'page' || hasCanvasBackground(scene) || hasFreeElements(scene))
+			(scene.type !== 'page' || hasCanvasBackground(scene) || hasStageElements(scene))
 		);
 	}
 
@@ -224,7 +294,10 @@
 	function sceneSectionStyle(scene: Scene): string | undefined {
 		const parts: string[] = [];
 		if (scene.background?.color) {
-			parts.push(`background:${scene.background.color}`);
+			// When the continuous backdrop is on it paints the scene colour (crossfading) — the
+			// section MUST stay transparent or it would cover the fixed backdrop behind it. We
+			// still derive light text for a dark scene so content over the backdrop stays legible.
+			if (!enhanced) parts.push(`background:${scene.background.color}`);
 			if (isDarkBackground(scene.background.color)) parts.push(...darkSceneVars());
 		}
 		if (isPinned(scene) && !framedViewport) {
@@ -263,9 +336,35 @@
 	function flowActorStyle(scene: Scene, element: Element): string {
 		return `z-index:${elementZIndex(scene, element)}`;
 	}
+
+	// A pinned actor's WRAPPER style: stacking + the optional nudge (a `translate` longhand that
+	// composes with the region's centring transform). Its region comes from `data-region`; the
+	// block child carries the effect transform/opacity. Never goes through actorStyle()/track
+	// positioning, so its `range` always means an enter/exit window (even in horizontal scenes).
+	function pinnedActorStyle(scene: Scene, element: Element): string {
+		const z = `z-index:${elementZIndex(scene, element)}`;
+		const nudge = pinNudgeStyle(element.anchor);
+		return nudge ? `${z};${nudge}` : z;
+	}
 </script>
 
-<article class="zine" data-viewport={viewport} style={rootStyle} bind:this={rootEl}>
+<article
+	class="zine"
+	class:has-backdrop={enhanced}
+	lang="en"
+	data-viewport={viewport}
+	style={`${rootStyle};${gapStyle}`}
+	bind:this={rootEl}
+>
+	{#if enhanced}
+		<Backdrop
+			scenes={allScenes}
+			opacities={resolvedBackdropOpacity}
+			progressFor={backdropProgressFor}
+			{themePalette}
+			framed={framedViewport}
+		/>
+	{/if}
 	{#if title}<h1 class="zine-title">{title}</h1>{/if}
 	{#each document.acts as act (act.id)}
 		<div class="zine-act" data-act={act.id}>
@@ -274,6 +373,7 @@
 				{@const horizontal = isHorizontal(scene)}
 				{@const flowElements = flowElementsFor(scene)}
 				{@const freeElements = freeElementsFor(scene)}
+				{@const pinnedElements = pinnedElementsFor(scene)}
 				<section
 					class="zine-scene"
 					data-type={scene.type}
@@ -282,7 +382,9 @@
 					data-scene-id={scene.id}
 					style={sceneSectionStyle(scene)}
 				>
-					{#if scene.background?.fill || scene.background?.overlay}
+					{#if !enhanced && (scene.background?.fill || scene.background?.overlay)}
+						<!-- Reduced motion: per-scene static background (no crossfade), in source order.
+						     With motion on, the continuous <Backdrop> above renders this instead. -->
 						<SceneBackground
 							background={scene.background}
 							{progress}
@@ -295,7 +397,7 @@
 						class="zine-scene__inner"
 						class:is-pinned={isPinned(scene)}
 						class:is-horizontal={horizontal}
-						class:has-free={freeElements.length > 0}
+						class:has-free={freeElements.length > 0 || pinnedElements.length > 0}
 					>
 						{#if horizontal}
 							<div class="zine-stage" style={stageStyle(scene, progress)}>
@@ -314,8 +416,10 @@
 										>
 											<BlockFrame
 												blockId={element.id}
+												blockType={element.block.type}
 												label={def.label}
 												style={element.block.style}
+												textKind={textKindForElement(element)}
 												animation={element.legacyAnimation}
 												timelineStyle={timeline.style || undefined}
 												timelineActive={timeline.active}
@@ -342,8 +446,10 @@
 									>
 										<BlockFrame
 											blockId={element.id}
+											blockType={block.type}
 											label={def.label}
 											style={block.style}
+											textKind={textKindForElement(element)}
 											animation={element.legacyAnimation}
 											timelineStyle={timeline.style || undefined}
 											timelineActive={timeline.active}
@@ -355,11 +461,12 @@
 							{/each}
 						{/if}
 
-						{#if freeElements.length}
-							<!-- Free sprites float over the scene in a viewport-fixed stage (a `size`
-							     container so a path's cqw/cqh resolve to viewport %). Their `path`
-							     motion positions them; with no motion they centre. Under reduced motion
-							     free elements instead lay out in flow above (so this overlay is empty). -->
+						{#if freeElements.length || pinnedElements.length}
+							<!-- The stage overlay: a viewport-fixed layer (a `size` container so a path's
+							     cqw/cqh resolve to viewport %), a SIBLING of any side-scroll stage so its
+							     actors stay put while a level pans. `free` sprites are positioned by their
+							     `path`; `pinned` content is positioned by its `data-region` anchor. Under
+							     reduced motion / narrow they lay out in flow above (so this is empty). -->
 							<div class="zine-stage-overlay">
 								{#each freeElements as element (element.id)}
 									{@const def = getBlock(element.block.type)}
@@ -376,8 +483,43 @@
 										>
 											<BlockFrame
 												blockId={element.id}
+												blockType={element.block.type}
 												label={def.label}
 												style={element.block.style}
+												textKind={textKindForElement(element)}
+												animation={element.legacyAnimation}
+												timelineStyle={timeline.style || undefined}
+												timelineActive={timeline.active}
+											>
+												<Render props={element.block.props} />
+											</BlockFrame>
+										</div>
+									{/if}
+								{/each}
+								{#each pinnedElements as element (element.id)}
+									{@const def = getBlock(element.block.type)}
+									<!-- Pinned actors compose with TIMELINE semantics (no axis), so `range` is
+									     an enter/exit window even in horizontal scenes. -->
+									{@const timeline = composeElementStyle(element, progress, impls, {
+										reducedMotion: rm
+									})}
+									{#if def}
+										{@const Render = def.Render}
+										<div
+											class="zine-pinned-actor"
+											data-track={element.track}
+											data-block-type={element.block.type}
+											data-region={pinRegion(element.anchor)}
+											inert={timeline.hidden || undefined}
+											aria-hidden={timeline.hidden || undefined}
+											style={pinnedActorStyle(scene, element)}
+										>
+											<BlockFrame
+												blockId={element.id}
+												blockType={element.block.type}
+												label={def.label}
+												style={element.block.style}
+												textKind={textKindForElement(element)}
 												animation={element.legacyAnimation}
 												timelineStyle={timeline.style || undefined}
 												timelineActive={timeline.active}
@@ -408,6 +550,13 @@
 		--zine-font-heading: ui-serif, Georgia, serif;
 		--zine-font-body: ui-sans-serif, system-ui, sans-serif;
 		--zine-measure: 42rem;
+		--zine-gap: 0svh;
+		/* A positioning context (relative) so the framed backdrop anchors here, AND a NEW stacking
+		   context (isolation) so the z-index:-1 backdrop is scoped INSIDE this article — painted
+		   above its own --zine-bg and below its content. Without the stacking context the fixed
+		   z-index:-1 layer escapes to the root and is buried behind this opaque background. */
+		position: relative;
+		isolation: isolate;
 		background: var(--zine-bg);
 		color: var(--zine-fg);
 		font-family: var(--zine-font-body);
@@ -475,8 +624,19 @@
 	}
 	.zine-scene {
 		position: relative;
+		/* Above the z-index:-1 continuous backdrop. */
+		z-index: 0;
 		padding: 1.5rem 0;
 		color: var(--zine-fg);
+	}
+	/* Breathing room: with the crossfading backdrop on, insert a pacing-scaled gap of scroll
+	   between scenes so one idea owns the screen and the backdrop has room to crossfade. The
+	   first scene gets none. (Reduced motion removes the gap — see the media block below.) */
+	.zine.has-backdrop .zine-scene {
+		margin-top: var(--zine-gap, 0);
+	}
+	.zine.has-backdrop .zine-act:first-child .zine-scene:first-child {
+		margin-top: 0;
 	}
 	/* Content sits above the background layer (SceneBackground is z-index 0). */
 	.zine-scene__inner {
@@ -605,6 +765,71 @@
 	.zine-free-actor[data-track='background'] :global(.zine-image) {
 		width: auto;
 	}
+	/* Pinned actors: anchored to a screen region in the stage overlay (ordinary absolute
+	   positioning, NOT CSS Anchor Positioning). The wrapper does region + nudge (the nudge is an
+	   inline `translate` longhand that composes with the centring transform); the block child
+	   carries the effect transform. Side-specific safe-area gutters; a size guard so content can't
+	   spill past the screen (the editor refuses over-long pinned actors — no inner scroll). */
+	.zine-pinned-actor {
+		position: absolute;
+		z-index: 1;
+		--pin-g: clamp(0.9rem, 4vw, 2.5rem);
+		display: flex;
+		flex-direction: column;
+		max-inline-size: min(34rem, calc(100% - 2 * var(--pin-g)));
+		max-block-size: calc(100svh - 2 * var(--pin-g));
+		overflow: hidden;
+		pointer-events: auto;
+	}
+	.zine-pinned-actor[data-track='background'] {
+		pointer-events: none;
+	}
+	.zine-pinned-actor :global(.zine-block) {
+		max-width: 100%;
+		margin: 0;
+		padding: 0;
+	}
+	.zine-pinned-actor[data-region='top-left'] {
+		top: calc(var(--pin-g) + env(safe-area-inset-top, 0px));
+		left: calc(var(--pin-g) + env(safe-area-inset-left, 0px));
+	}
+	.zine-pinned-actor[data-region='top'] {
+		top: calc(var(--pin-g) + env(safe-area-inset-top, 0px));
+		left: 50%;
+		transform: translateX(-50%);
+	}
+	.zine-pinned-actor[data-region='top-right'] {
+		top: calc(var(--pin-g) + env(safe-area-inset-top, 0px));
+		right: calc(var(--pin-g) + env(safe-area-inset-right, 0px));
+	}
+	.zine-pinned-actor[data-region='left'] {
+		top: 50%;
+		left: calc(var(--pin-g) + env(safe-area-inset-left, 0px));
+		transform: translateY(-50%);
+	}
+	.zine-pinned-actor[data-region='center'] {
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+	}
+	.zine-pinned-actor[data-region='right'] {
+		top: 50%;
+		right: calc(var(--pin-g) + env(safe-area-inset-right, 0px));
+		transform: translateY(-50%);
+	}
+	.zine-pinned-actor[data-region='bottom-left'] {
+		bottom: calc(var(--pin-g) + env(safe-area-inset-bottom, 0px));
+		left: calc(var(--pin-g) + env(safe-area-inset-left, 0px));
+	}
+	.zine-pinned-actor[data-region='bottom'] {
+		bottom: calc(var(--pin-g) + env(safe-area-inset-bottom, 0px));
+		left: 50%;
+		transform: translateX(-50%);
+	}
+	.zine-pinned-actor[data-region='bottom-right'] {
+		bottom: calc(var(--pin-g) + env(safe-area-inset-bottom, 0px));
+		right: calc(var(--pin-g) + env(safe-area-inset-right, 0px));
+	}
 	:global(.zine .zine-block) {
 		max-width: var(--zine-measure);
 		margin: 0 auto;
@@ -616,35 +841,182 @@
 	:global(.zine .zine-block[data-align='right']) {
 		text-align: right;
 	}
+	/* Justified is only emitted by resolveTypeset() on a medium/wide measure (narrow → left). */
+	:global(.zine .zine-block[data-align='justify']) {
+		text-align: justify;
+		hyphens: auto;
+	}
+	/* Editorial typeset — data-attrs / custom props set by BlockFrame from resolveTypeset()
+	   (bounded values only). Measure caps line length; leading is role-floored. */
+	:global(.zine .zine-block[data-typeset]) {
+		max-width: var(--zine-ts-measure, var(--zine-measure));
+		line-height: var(--zine-ts-leading, inherit);
+	}
+	:global(.zine .zine-block[data-text-case='upper']) {
+		text-transform: uppercase;
+	}
+	:global(.zine .zine-block[data-text-case='smallcaps']) {
+		font-variant-caps: small-caps;
+	}
+	/* "Tidy line breaks": balance (display) / pretty (body). Progressive — falls back to normal
+	   wrapping where unsupported; `pretty` improves the rag/orphans (it does not remove widows). */
+	:global(.zine .zine-block[data-tidy='balance']) {
+		text-wrap: balance;
+	}
+	:global(.zine .zine-block[data-tidy='pretty']) {
+		text-wrap: pretty;
+	}
+	/* Roles size/colour the text CONTENT so the richText/heading defaults don't override them.
+	   "Headline" is visual only — it never changes the block's heading level (h1/h2+ invariant). */
+	:global(.zine .zine-block[data-typeset-role='headline'] .zine-heading),
+	:global(.zine .zine-block[data-typeset-role='headline'] .zine-richtext) {
+		font-family: var(--zine-font-heading);
+		font-weight: 800;
+		font-size: clamp(1.9rem, 4.5vw, 3rem);
+		color: var(--zine-heading, var(--zine-fg));
+	}
+	:global(.zine .zine-block[data-typeset-role='kicker'] .zine-heading),
+	:global(.zine .zine-block[data-typeset-role='kicker'] .zine-richtext) {
+		font-family: var(--zine-font-body);
+		font-weight: 800;
+		font-size: 0.82rem;
+		letter-spacing: 0.12em;
+		color: var(--zine-accent);
+	}
+	:global(.zine .zine-block[data-typeset-role='deck'] .zine-heading),
+	:global(.zine .zine-block[data-typeset-role='deck'] .zine-richtext) {
+		font-weight: 500;
+		font-size: 1.25rem;
+		color: var(--zine-muted);
+	}
+	:global(.zine .zine-block[data-typeset-role='pullquote']) {
+		border-left: 4px solid var(--zine-accent);
+		padding-left: 0.8em;
+	}
+	:global(.zine .zine-block[data-typeset-role='pullquote'] .zine-richtext),
+	:global(.zine .zine-block[data-typeset-role='pullquote'] .zine-richtext p) {
+		font-family: var(--zine-font-heading);
+		font-weight: 700;
+		font-size: clamp(1.4rem, 3vw, 2rem);
+		color: var(--zine-heading, var(--zine-fg));
+	}
+	/* Manual hanging opening quote — `hanging-punctuation` isn't reliable on the fleet. */
+	:global(.zine .zine-block[data-typeset-role='pullquote'] .zine-richtext p:first-child) {
+		text-indent: -0.5ch;
+	}
+	:global(.zine .zine-block[data-typeset-role='blockquote']) {
+		border-left: 3px solid color-mix(in oklch, var(--zine-accent), transparent 55%);
+		padding-left: 0.9em;
+	}
+	:global(.zine .zine-block[data-typeset-role='blockquote'] .zine-richtext) {
+		color: var(--zine-muted);
+	}
+	:global(.zine .zine-block[data-typeset-role='caption'] .zine-richtext),
+	:global(.zine .zine-block[data-typeset-role='caption'] .zine-richtext p) {
+		font-size: 0.85rem;
+		color: var(--zine-muted);
+	}
+	:global(.zine .zine-block[data-typeset-role='byline'] .zine-richtext),
+	:global(.zine .zine-block[data-typeset-role='byline'] .zine-richtext p) {
+		font-size: 0.8rem;
+		letter-spacing: 0.08em;
+		color: var(--zine-muted);
+	}
+	:global(.zine .zine-block[data-text-color] > .zine-heading),
+	:global(.zine .zine-block[data-text-color] > .zine-richtext),
+	:global(.zine .zine-block[data-text-color] > .zine-richtext h2),
+	:global(.zine .zine-block[data-text-color] > .zine-richtext h3),
+	:global(.zine .zine-block[data-text-color] > .zine-richtext h4) {
+		color: var(--zine-text-color);
+	}
 	:global(.zine .zine-block[data-text-backdrop] > .zine-heading),
 	:global(.zine .zine-block[data-text-backdrop] > .zine-richtext) {
+		--zine-text-backdrop-pad-y: calc(0.1em + var(--zine-text-backdrop-padding, 1) * 0.34em);
+		--zine-text-backdrop-pad-x: calc(0.16em + var(--zine-text-backdrop-padding, 1) * 0.62em);
+		--zine-text-backdrop-circle-pad: calc(0.45rem + var(--zine-text-backdrop-padding, 1) * 1.05rem);
+		--zine-text-backdrop-circle-size: min(
+			calc(12rem + var(--zine-text-backdrop-padding, 1) * 5.5rem),
+			100%
+		);
 		box-sizing: border-box;
 		max-width: 100%;
-		background: color-mix(
-			in srgb,
-			var(--zine-text-backdrop-color, var(--zine-bg)) var(--zine-text-backdrop-opacity, 72%),
-			transparent
-		);
 		overflow-wrap: anywhere;
 	}
 	:global(.zine .zine-block[data-text-backdrop='box'] > .zine-heading),
 	:global(.zine .zine-block[data-text-backdrop='box'] > .zine-richtext) {
 		display: inline-block;
 		border-radius: 0.45rem;
-		padding: 0.32em 0.55em;
+		background: color-mix(
+			in srgb,
+			var(--zine-text-backdrop-color, var(--zine-bg)) var(--zine-text-backdrop-opacity, 72%),
+			transparent
+		);
+		padding: var(--zine-text-backdrop-pad-y) var(--zine-text-backdrop-pad-x);
+	}
+	:global(.zine .zine-block[data-text-backdrop='circle']) {
+		--zine-text-backdrop-circle-pad: calc(0.45rem + var(--zine-text-backdrop-padding, 1) * 1.05rem);
+		--zine-text-backdrop-circle-size: min(
+			calc(14rem + var(--zine-text-backdrop-padding, 1) * 5.5rem),
+			100%
+		);
+		display: block;
+		inline-size: var(--zine-text-backdrop-circle-size);
+		max-inline-size: 100%;
+		aspect-ratio: 1;
+		margin-inline: auto;
+		border-radius: 50%;
+		background: color-mix(
+			in srgb,
+			var(--zine-text-backdrop-color, var(--zine-bg)) var(--zine-text-backdrop-opacity, 72%),
+			transparent
+		);
+		padding: var(--zine-text-backdrop-circle-pad);
+		text-align: center;
+		overflow: hidden;
 	}
 	:global(.zine .zine-block[data-text-backdrop='circle'] > .zine-heading),
 	:global(.zine .zine-block[data-text-backdrop='circle'] > .zine-richtext) {
-		display: inline-grid;
-		place-items: center;
-		inline-size: min(18rem, 100%);
-		aspect-ratio: 1;
-		border-radius: 50%;
-		padding: 1.35rem;
-		text-align: center;
+		margin-block: 0;
 	}
-	:global(.zine .zine-block[data-text-backdrop='circle'] > .zine-richtext) {
-		inline-size: min(22rem, 100%);
+	/* Circle backdrops get a circle-shaped text measure too. The guides are empty spans
+	   emitted by BlockFrame only for circle mode; `shape-outside` degrades to a rectangular
+	   readable measure if a browser does not support it. */
+	:global(.zine .zine-block[data-text-backdrop='circle'] > .zine-circle-shape) {
+		width: 50%;
+		height: 100%;
+		shape-margin: 0.18rem;
+	}
+	:global(.zine .zine-block[data-text-backdrop='circle'] > .zine-circle-shape--left) {
+		float: left;
+		shape-outside: polygon(
+			0 0,
+			100% 0,
+			63% 6%,
+			36% 16%,
+			16% 31%,
+			0 50%,
+			16% 69%,
+			36% 84%,
+			63% 94%,
+			100% 100%,
+			0 100%
+		);
+	}
+	:global(.zine .zine-block[data-text-backdrop='circle'] > .zine-circle-shape--right) {
+		float: right;
+		shape-outside: polygon(
+			0 0,
+			100% 0,
+			100% 100%,
+			0 100%,
+			37% 94%,
+			64% 84%,
+			84% 69%,
+			100% 50%,
+			84% 31%,
+			64% 16%,
+			37% 6%
+		);
 	}
 	:global(.zine .zine-block[data-text-backdrop] > .zine-richtext > :last-child) {
 		margin-bottom: 0;
@@ -720,6 +1092,11 @@
 	:global(.zine .zine-richtext a),
 	:global(.zine .zine-link) {
 		color: var(--zine-accent);
+		font-weight: 750;
+		text-decoration-line: underline;
+		text-decoration-thickness: 0.11em;
+		text-decoration-color: color-mix(in oklch, var(--zine-accent), transparent 20%);
+		text-decoration-skip-ink: auto;
 		text-underline-offset: 0.18em;
 	}
 	:global(.zine .zine-image) {
@@ -772,6 +1149,9 @@
 	@media (prefers-reduced-motion: reduce) {
 		.zine-scene {
 			min-height: 0 !important;
+			/* No crossfade under reduced motion → no breathing-room gap either (per-scene static
+			   backgrounds render in source order). */
+			margin-top: 0 !important;
 		}
 		.zine-scene__inner.is-pinned,
 		.zine-scene__inner.is-horizontal,
@@ -791,10 +1171,55 @@
 			container-type: normal;
 		}
 		.zine-actor,
-		.zine-free-actor {
+		.zine-free-actor,
+		.zine-pinned-actor {
 			position: static;
+			max-block-size: none;
+			max-inline-size: 100%;
+			overflow: visible;
+			translate: none !important;
 		}
-		.zine-free-actor :global(.zine-block) {
+		.zine-free-actor :global(.zine-block),
+		.zine-pinned-actor :global(.zine-block) {
+			transform: none !important;
+		}
+	}
+
+	/* Same readable-stack fallback on narrow screens, applied before hydration so pinned actors
+	   never flash as an absolute overlay on phones/Chromebooks. The editor's framed preview keeps
+	   the full pinned choreography even if the frame itself is small. */
+	@media (max-width: 700px) {
+		.zine:not([data-viewport='frame']) .zine-scene {
+			min-height: 0 !important;
+		}
+		.zine:not([data-viewport='frame']) .zine-scene__inner.is-pinned,
+		.zine:not([data-viewport='frame']) .zine-scene__inner.is-horizontal,
+		.zine:not([data-viewport='frame']) .zine-scene__inner.is-horizontal.is-pinned {
+			position: static;
+			min-height: 0;
+			height: auto;
+			display: block;
+			overflow: visible;
+		}
+		.zine:not([data-viewport='frame']) .zine-stage,
+		.zine:not([data-viewport='frame']) .zine-stage-overlay {
+			position: static;
+			width: auto;
+			height: auto;
+			transform: none !important;
+			container-type: normal;
+		}
+		.zine:not([data-viewport='frame']) .zine-actor,
+		.zine:not([data-viewport='frame']) .zine-free-actor,
+		.zine:not([data-viewport='frame']) .zine-pinned-actor {
+			position: static;
+			max-block-size: none;
+			max-inline-size: 100%;
+			overflow: visible;
+			translate: none !important;
+		}
+		.zine:not([data-viewport='frame']) .zine-free-actor :global(.zine-block),
+		.zine:not([data-viewport='frame']) .zine-pinned-actor :global(.zine-block) {
 			transform: none !important;
 		}
 	}

@@ -60,7 +60,7 @@ export const sampleZineMeta = {
 };
 
 export const sampleZineRaw: unknown = {
-	schemaVersion: 5,
+	schemaVersion: 7,
 	theme: {
 		fontPair: 'editorial',
 		preset: 'pixel-press',

@@ -11,7 +11,7 @@ const okSave = async (): Promise<SaveResult> => ({ ok: true, clientRev: 1, updat
 
 function makeDocument(): ZineDocument {
 	return {
-		schemaVersion: 5,
+		schemaVersion: 7,
 		theme: {},
 		acts: [
 			{

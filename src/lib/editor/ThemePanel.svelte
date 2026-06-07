@@ -16,6 +16,14 @@
 	const swatches = $derived(themeSwatches(store.doc.theme));
 	const activePreset = $derived(store.doc.theme?.preset);
 
+	// Scene flow: how much scenes breathe + how soft the backdrop crossfades between them.
+	const pacing = $derived(store.doc.pacing ?? 'cozy');
+	const pacings: { v: 'tight' | 'cozy' | 'roomy'; l: string }[] = [
+		{ v: 'tight', l: 'Tight' },
+		{ v: 'cozy', l: 'Cozy' },
+		{ v: 'roomy', l: 'Roomy' }
+	];
+
 	const ROLES: { key: ThemeRole; label: string; large: boolean; badge: boolean }[] = [
 		{ key: 'background', label: 'Page background', large: false, badge: false },
 		{ key: 'text', label: 'Body text', large: false, badge: true },
@@ -119,6 +127,24 @@
 		<p class="section-label">Fonts</p>
 		<FontPicker {store} />
 	</section>
+
+	<!-- Scene flow: breathing room + how softly backgrounds crossfade between scenes -->
+	<section>
+		<p class="section-label">Scene flow</p>
+		<div class="pacing-row" role="group" aria-label="Scene flow">
+			{#each pacings as p (p.v)}
+				<button
+					type="button"
+					class="pacing"
+					aria-pressed={pacing === p.v}
+					onclick={() => store.setPacing(p.v)}
+				>
+					{p.l}
+				</button>
+			{/each}
+		</div>
+		<p class="hint">How much scenes breathe and how softly backgrounds crossfade.</p>
+	</section>
 </div>
 
 <style>
@@ -134,6 +160,29 @@
 		margin-top: 0.4rem;
 		font-size: 0.72rem;
 		color: hsl(var(--muted-foreground));
+	}
+	.pacing-row {
+		display: flex;
+		gap: 0.3rem;
+	}
+	.pacing {
+		flex: 1 1 auto;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-paper);
+		box-shadow: 0.1rem 0.1rem 0 var(--pixel-ink);
+		padding: 0.4rem 0.5rem;
+		font-size: 0.8rem;
+		font-weight: 850;
+		color: hsl(var(--foreground));
+		cursor: pointer;
+	}
+	.pacing[aria-pressed='true'] {
+		background: var(--pixel-cyan);
+	}
+	.pacing:focus-visible {
+		outline: 3px solid var(--pixel-cyan);
+		outline-offset: 2px;
 	}
 	.role-label {
 		font-size: 0.82rem;

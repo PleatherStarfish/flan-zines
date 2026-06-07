@@ -11,7 +11,7 @@ import type { Element, ZineDocument } from '../schema/document';
 
 function freeSceneRaw() {
 	return {
-		schemaVersion: 5,
+		schemaVersion: 7,
 		theme: { fontPair: 'custom:caveat:inter' },
 		acts: [
 			{
@@ -112,7 +112,7 @@ describe('the full v1 → v5 migration chain is lossless for content', () => {
 			]
 		};
 		const doc: ZineDocument = parseDocument(v1);
-		expect(doc.schemaVersion).toBe(5);
+		expect(doc.schemaVersion).toBe(7);
 		const scene = doc.acts[0].scenes[0];
 		expect(scene.elements.map((e) => e.block.type)).toEqual(['heading', 'richText']);
 		// the heading text survives the section→scene→element migration
@@ -126,7 +126,7 @@ describe('the full v1 → v5 migration chain is lossless for content', () => {
 describe('quality fixes', () => {
 	it('derives dark-scene text from the theme, not a hardcoded colour', () => {
 		const doc = parseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			theme: {
 				colors: {
 					background: '#ffffff',

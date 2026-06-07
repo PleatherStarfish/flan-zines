@@ -10,7 +10,7 @@ const okSave = async (): Promise<SaveResult> => ({ ok: true, clientRev: 1, updat
 
 function setup() {
 	const zine = {
-		schemaVersion: 5,
+		schemaVersion: 7,
 		theme: {},
 		acts: [
 			{

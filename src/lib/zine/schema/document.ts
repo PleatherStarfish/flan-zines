@@ -13,7 +13,18 @@ import { SafeUrlSchema } from './url';
 // (all new theme fields optional) plus a lossless 3→4 migration (schema/migrate.ts).
 // v5 adds Element.placement ('free' sprites that float over a scene on a path) — additive +
 // a no-op 4→5 migration.
-export const CURRENT_SCHEMA_VERSION = 5 as const;
+// v6 adds the `pinned` placement + Element.anchor (a content element held at a named screen
+// region — "Pinned on screen") and BlockStyle.typeset (editorial roles/measure/leading/case).
+// All additive + a no-op 5→6 migration. See docs/design/pinned-content-and-typesetting.md.
+// v7 adds `pacing` — the document-level scene-continuity preset that drives the crossfading
+// backdrop + breathing room between scenes. Additive + a no-op 6→7 migration.
+export const CURRENT_SCHEMA_VERSION = 7 as const;
+
+// Scene-continuity pacing: how much room scenes get to breathe and how soft the backdrop
+// crossfade is between them. Absent = the renderer's default ('cozy').
+export const PACINGS = ['tight', 'cozy', 'roomy'] as const;
+export const PacingSchema = z.enum(PACINGS);
+export type Pacing = z.infer<typeof PacingSchema>;
 
 // Source-data tier (RESERVED Step 4b). Charts reference a named dataset; large/messy
 // data is processed server-side and never inlined.
@@ -81,10 +92,36 @@ export type ElementTrack = z.infer<typeof ElementTrackSchema>;
 // How an element is laid out (scene-timeline.md). `flow` (default, absent) = the normal
 // reading column / stage actor. `free` = a sprite that floats over the scene in a
 // viewport-fixed overlay, positioned by its `path` motion in stage % — the side-scroller's
-// jumping character. Orthogonal to `track` (which lane it groups under in the editor).
-export const ELEMENT_PLACEMENTS = ['flow', 'free'] as const;
+// jumping character. `pinned` = a content element held at a named screen region (`anchor`)
+// for the scene, animating in/out via its effects ("Pinned on screen"). Orthogonal to `track`.
+export const ELEMENT_PLACEMENTS = ['flow', 'free', 'pinned'] as const;
 export const ElementPlacementSchema = z.enum(ELEMENT_PLACEMENTS);
 export type ElementPlacement = z.infer<typeof ElementPlacementSchema>;
+
+// The nine screen regions a `pinned` element can sit at (a 3×3 grid). Positioned with ordinary
+// CSS absolute positioning in the renderer — NOT the experimental CSS Anchor Positioning.
+export const PIN_REGIONS = [
+	'top-left',
+	'top',
+	'top-right',
+	'left',
+	'center',
+	'right',
+	'bottom-left',
+	'bottom',
+	'bottom-right'
+] as const;
+export const PinRegionSchema = z.enum(PIN_REGIONS);
+export type PinRegion = z.infer<typeof PinRegionSchema>;
+
+// A `pinned` element's position: a region plus small integer NUDGE steps (≈0.75rem each) —
+// surfaced as "move left/right/up/down", never "padding". Bounded → injection-safe.
+export const ElementAnchorSchema = z.object({
+	region: PinRegionSchema.default('center'),
+	dx: z.number().int().min(-6).max(6).default(0),
+	dy: z.number().int().min(-6).max(6).default(0)
+});
+export type ElementAnchor = z.infer<typeof ElementAnchorSchema>;
 
 export const TimelineRangeSchema = z
 	.object({
@@ -203,6 +240,7 @@ export const ElementSchema = z.object({
 	block: BlockSchema,
 	range: TimelineRangeSchema,
 	placement: ElementPlacementSchema.optional(), // absent = 'flow'
+	anchor: ElementAnchorSchema.optional(), // only used when placement === 'pinned'
 	enter: EffectRefSchema.optional(),
 	exit: EffectRefSchema.optional(),
 	motion: EffectRefSchema.optional(),
@@ -267,6 +305,23 @@ export const SceneSchema = z
 					message: 'anchorBeat must reference a beat in the same scene.'
 				});
 			}
+			if (element.placement === 'pinned' && element.motion) {
+				ctx.addIssue({
+					code: 'custom',
+					path: ['elements', i, 'motion'],
+					message: 'Pinned elements cannot use sustained motion in v1.'
+				});
+			}
+			if (
+				element.block.style?.typeset?.kind === 'content' &&
+				(element.placement || element.motion)
+			) {
+				ctx.addIssue({
+					code: 'custom',
+					path: ['elements', i],
+					message: 'Content text cannot use placement choreography or sustained motion.'
+				});
+			}
 		});
 	});
 export type Scene = z.infer<typeof SceneSchema>;
@@ -300,6 +355,7 @@ export type Act = z.infer<typeof ActSchema>;
 export const ZineDocumentSchema = z.object({
 	schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
 	theme: ThemeSchema.optional(),
+	pacing: PacingSchema.optional(), // scene-continuity preset; absent = 'cozy'
 	dataSources: z.record(z.string(), DataSourceRefSchema).optional(),
 	acts: z.array(ActSchema)
 });

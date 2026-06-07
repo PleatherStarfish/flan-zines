@@ -11,7 +11,7 @@ const wrap = (block: unknown) => ({
 describe('document schema', () => {
 	it('parses the sample fixture as the current story model', () => {
 		const doc = parseDocument(sampleZineRaw);
-		expect(doc.schemaVersion).toBe(5);
+		expect(doc.schemaVersion).toBe(7);
 		expect(doc.acts).toHaveLength(1);
 		expect(doc.acts[0].scenes).toHaveLength(6);
 		expect(doc.acts[0].scenes[0].type).toBe('page');
@@ -34,7 +34,7 @@ describe('document schema', () => {
 
 	it('rejects a page scene without exactly one beat at 0', () => {
 		const result = safeParseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			acts: [
 				{
 					id: 'act',
@@ -56,7 +56,7 @@ describe('document schema', () => {
 
 	it('rejects an element anchorBeat outside its scene', () => {
 		const result = safeParseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			acts: [
 				{
 					id: 'act',
@@ -141,7 +141,7 @@ describe('document schema', () => {
 
 		expect(
 			safeParseDocument({
-				schemaVersion: 5,
+				schemaVersion: 7,
 				acts: [
 					{
 						id: 'act',
@@ -180,7 +180,7 @@ describe('document schema', () => {
 
 	it('accepts explicit text readability backdrops on block style', () => {
 		const doc = parseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			acts: [
 				{
 					id: 'act',
@@ -201,7 +201,12 @@ describe('document schema', () => {
 										props: { text: 'Readable' },
 										style: {
 											align: 'center',
-											textBackdrop: { shape: 'circle', color: '#FFF3C4', opacity: 0.65 }
+											textBackdrop: {
+												shape: 'circle',
+												color: '#FFF3C4',
+												opacity: 0.65,
+												padding: 4
+											}
 										}
 									}
 								}
@@ -213,7 +218,7 @@ describe('document schema', () => {
 		});
 		expect(doc.acts[0].scenes[0].elements[0].block.style).toMatchObject({
 			align: 'center',
-			textBackdrop: { shape: 'circle', color: '#FFF3C4', opacity: 0.65 }
+			textBackdrop: { shape: 'circle', color: '#FFF3C4', opacity: 0.65, padding: 4 }
 		});
 	});
 
@@ -228,13 +233,179 @@ describe('document schema', () => {
 		expect(publishBlockers(parseDocument(sampleZineRaw))).toEqual([]);
 	});
 
+	it('flags a pinned actor that holds a link (the v1 interactive-pinned gate)', () => {
+		const doc = parseDocument({
+			schemaVersion: 7,
+			acts: [
+				{
+					id: 'act_1',
+					scenes: [
+						{
+							id: 'scn_1',
+							type: 'reveal',
+							length: 'long',
+							beats: [{ id: 'beat_1', at: 0 }],
+							elements: [
+								{
+									id: 'el_1',
+									track: 'content',
+									placement: 'pinned',
+									anchor: { region: 'center', dx: 0, dy: 0 },
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'blk_1',
+										type: 'richText',
+										props: {
+											doc: {
+												type: 'doc',
+												content: [
+													{
+														type: 'paragraph',
+														content: [
+															{
+																type: 'text',
+																text: 'tap',
+																marks: [{ type: 'link', attrs: { href: 'https://example.test' } }]
+															}
+														]
+													}
+												]
+											}
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(publishBlockers(doc).some((b) => /links or buttons/i.test(b))).toBe(true);
+	});
+
+	it('flags a pinned actor that is too large to fit on one screen', () => {
+		const doc = parseDocument({
+			schemaVersion: 7,
+			acts: [
+				{
+					id: 'act_1',
+					scenes: [
+						{
+							id: 'scn_1',
+							type: 'reveal',
+							length: 'long',
+							beats: [{ id: 'beat_1', at: 0 }],
+							elements: [
+								{
+									id: 'el_1',
+									track: 'content',
+									placement: 'pinned',
+									anchor: { region: 'center', dx: 0, dy: 0 },
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'blk_1',
+										type: 'richText',
+										props: {
+											doc: {
+												type: 'doc',
+												content: [
+													{
+														type: 'paragraph',
+														content: [{ type: 'text', text: 'x'.repeat(241) }]
+													}
+												]
+											}
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(publishBlockers(doc).some((b) => /short enough/i.test(b))).toBe(true);
+	});
+
+	it('rejects sustained motion on a pinned actor', () => {
+		const result = safeParseDocument({
+			schemaVersion: 7,
+			acts: [
+				{
+					id: 'act_1',
+					scenes: [
+						{
+							id: 'scn_1',
+							type: 'reveal',
+							length: 'long',
+							beats: [{ id: 'beat_1', at: 0 }],
+							elements: [
+								{
+									id: 'el_1',
+									track: 'media',
+									placement: 'pinned',
+									anchor: { region: 'center', dx: 0, dy: 0 },
+									range: { start: 0, end: 1 },
+									motion: { type: 'float', params: {} },
+									block: {
+										id: 'blk_1',
+										type: 'image',
+										props: { src: '/x.svg', alt: 'example' }
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.message).toMatch(/sustained motion/i);
+	});
+
+	it('rejects explicit content text with placement choreography', () => {
+		const result = safeParseDocument({
+			schemaVersion: 7,
+			acts: [
+				{
+					id: 'act_1',
+					scenes: [
+						{
+							id: 'scn_1',
+							type: 'reveal',
+							length: 'long',
+							beats: [{ id: 'beat_1', at: 0 }],
+							elements: [
+								{
+									id: 'el_1',
+									track: 'content',
+									placement: 'pinned',
+									anchor: { region: 'center', dx: 0, dy: 0 },
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'blk_1',
+										type: 'heading',
+										props: { text: 'Content heading' },
+										style: { typeset: { kind: 'content', role: 'headline' } }
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.message).toMatch(/Content text/i);
+	});
+
 	it('throws DocumentError for non-object input', () => {
 		expect(() => parseDocument(42)).toThrow(DocumentError);
 	});
 
 	it('accepts an explicit per-scene scrollLength and resolves scroll distance', () => {
 		const doc = parseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			acts: [
 				{
 					id: 'act',
@@ -263,7 +434,7 @@ describe('document schema', () => {
 	it('accepts a scene scrollAxis and rejects an unknown one', () => {
 		const make = (axis: string) =>
 			safeParseDocument({
-				schemaVersion: 5,
+				schemaVersion: 7,
 				acts: [
 					{
 						id: 'act',
@@ -289,7 +460,7 @@ describe('document schema', () => {
 	it('validates scene background fills (media URLs + registry-backed canvas presets)', () => {
 		const withBg = (background: unknown) =>
 			safeParseDocument({
-				schemaVersion: 5,
+				schemaVersion: 7,
 				acts: [
 					{
 						id: 'act',
@@ -345,7 +516,7 @@ describe('document schema', () => {
 
 	it('rejects a scrollLength outside the supported range', () => {
 		const result = safeParseDocument({
-			schemaVersion: 5,
+			schemaVersion: 7,
 			acts: [
 				{
 					id: 'act',
@@ -368,7 +539,7 @@ describe('document schema', () => {
 	it('accepts a free element with a path motion and round-trips placement', () => {
 		const makeFree = (placement: unknown) =>
 			safeParseDocument({
-				schemaVersion: 5,
+				schemaVersion: 7,
 				acts: [
 					{
 						id: 'act',

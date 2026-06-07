@@ -10,7 +10,10 @@ performance budget, mobile fallbacks, resize handling, and scroll-perf. Sources:
 
 1. **MUST NOT size scroll steps/graphics with `vh`.** Compute px from `window.innerHeight` on
    load/resize. Mobile navbars resize the viewport and make `vh` triggers jump. **[RESPONSIVE]**,
-   **[RESIZE]**
+   **[RESIZE]** — _Sanctioned exception:_ the CSS **`svh`** stable-viewport unit for a **pure-CSS
+   `position: sticky` range** (no JS scroll math). `svh` is a fixed _small_-viewport value that
+   does **not** change when the navbar toggles, so it can't desync a sticky range the way `vh`/
+   `dvh`/`lvh` do (§3).
 2. **MUST handle resize.** ~2–3% of users resize; structure code as **`setup()` / `resize()` /
    `draw()`** and debounce. **[RESIZE]**
 3. **MUST prefer `IntersectionObserver`** over scroll listeners; if you must listen to scroll, throttle
@@ -82,6 +85,15 @@ navbar visibility and fires resize. — **Pattern (our stack):**
 
 **Gotcha:** `100vh` is fine for non-scroll, non-trigger decorative full-bleed where a little jump is
 invisible — but if it gates a Scrollama trigger or a sticky range, it WILL desync. Default to px.
+
+**Stable viewport units (the modern, blessed path for CSS sticky ranges):** when a sticky range
+is sized **purely in CSS** (no JS reading it), prefer **`svh`** — the _small_ viewport height,
+the viewport with all dynamic toolbars **shown**. Unlike `vh` (legacy large) and `dvh`/`lvh`
+(which change as the navbar toggles), `svh` resolves to one **fixed** value, so a `min-height:
+Nsvh` sticky range cannot jump mid-scroll. This is the navbar-trap fix expressed in CSS, and is
+what `ZineRenderer` uses for pinned-scene height. Rule of thumb: **JS-measured heights → px from
+`innerHeight`; pure-CSS sticky ranges → `svh`.** Still never use bare `vh`/`dvh`/`lvh` for a
+trigger or sticky range.
 
 ---
 

@@ -6,7 +6,7 @@
 	let { scene, theme }: { scene: Scene; theme?: Theme } = $props();
 
 	const document = $derived<ZineDocument>({
-		schemaVersion: 5,
+		schemaVersion: 7,
 		theme,
 		acts: [{ id: 'act_preview', scenes: [scene] }]
 	});

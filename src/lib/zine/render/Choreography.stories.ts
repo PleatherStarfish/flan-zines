@@ -8,7 +8,7 @@ const SCENE = 'scn_jump';
 
 function jumpDoc() {
 	return parseDocument({
-		schemaVersion: 5,
+		schemaVersion: 7,
 		theme: {
 			swatches: ['#dff0ff', '#123244', '#e4572e'],
 			colors: {

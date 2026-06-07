@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { BlockStyle } from '../schema/theme';
+	import type { BlockStyle, TextKind } from '../schema/theme';
 	import type { AnimationDescriptor } from '../schema/animation';
 	import { getBlockDecoration } from './context';
+	import { resolveTypeset } from './typeset';
 
 	// Shared per-block wrapper. Applies block style (alignment) and is the single seam
 	// where the animation system (Step 4) attaches motion. When the editor provides a
@@ -12,16 +13,20 @@
 	// render is the reduced-motion / graceful-degradation baseline.
 	let {
 		blockId,
+		blockType,
 		label,
 		style,
+		textKind,
 		animation,
 		timelineStyle,
 		timelineActive,
 		children
 	}: {
 		blockId?: string;
+		blockType?: string;
 		label?: string;
 		style?: BlockStyle;
+		textKind?: TextKind;
 		animation?: AnimationDescriptor;
 		timelineStyle?: string;
 		timelineActive?: boolean;
@@ -32,13 +37,22 @@
 	const editable = $derived(Boolean(decoration && blockId && decoration().enabled));
 	const selected = $derived(decoration && blockId ? decoration().selectedId === blockId : false);
 	const textBackdrop = $derived(style?.textBackdrop);
+	const textColor = $derived(style?.textColor);
+	// Editorial typeset resolved to concrete, bounded values (measure/leading/case/align/wrap).
+	const typeset = $derived(resolveTypeset(style, blockType, textKind));
 	const frameStyle = $derived.by(() => {
 		const parts: string[] = [];
 		if (timelineStyle) parts.push(timelineStyle);
+		if (textColor) parts.push(`--zine-text-color:${textColor}`);
 		if (textBackdrop) {
 			parts.push(`--zine-text-backdrop-color:${textBackdrop.color}`);
 			parts.push(`--zine-text-backdrop-opacity:${Math.round(textBackdrop.opacity * 100)}%`);
+			parts.push(`--zine-text-backdrop-padding:${textBackdrop.padding ?? 1}`);
 		}
+		// Numeric typeset values go through bounded CSS custom properties (never raw author CSS).
+		if (typeset.measureCh) parts.push(`--zine-ts-measure:${typeset.measureCh}ch`);
+		if (typeset.leading) parts.push(`--zine-ts-leading:${typeset.leading}`);
+		if (typeset.tidyWrap) parts.push(`--zine-ts-wrap:${typeset.tidyWrap}`);
 		return parts.length ? parts.join(';') : undefined;
 	});
 </script>
@@ -58,11 +72,21 @@
 		<div
 			class="zine-block"
 			class:is-timeline-active={timelineActive}
-			data-align={style?.align}
+			data-align={typeset.align}
 			data-animation={animation?.type}
+			data-text-color={textColor ? true : undefined}
 			data-text-backdrop={textBackdrop?.shape}
+			data-typeset={typeset.hasTypeset || undefined}
+			data-text-kind={typeset.kind}
+			data-typeset-role={typeset.role}
+			data-text-case={typeset.textCase}
+			data-tidy={typeset.tidyWrap}
 			style={frameStyle}
 		>
+			{#if textBackdrop?.shape === 'circle'}
+				<span class="zine-circle-shape zine-circle-shape--left" aria-hidden="true"></span>
+				<span class="zine-circle-shape zine-circle-shape--right" aria-hidden="true"></span>
+			{/if}
 			{@render children()}
 		</div>
 	</div>
@@ -70,11 +94,21 @@
 	<div
 		class="zine-block"
 		class:is-timeline-active={timelineActive}
-		data-align={style?.align}
+		data-align={typeset.align}
 		data-animation={animation?.type}
+		data-text-color={textColor ? true : undefined}
 		data-text-backdrop={textBackdrop?.shape}
+		data-typeset={typeset.hasTypeset || undefined}
+		data-text-kind={typeset.kind}
+		data-typeset-role={typeset.role}
+		data-text-case={typeset.textCase}
+		data-tidy={typeset.tidyWrap}
 		style={frameStyle}
 	>
+		{#if textBackdrop?.shape === 'circle'}
+			<span class="zine-circle-shape zine-circle-shape--left" aria-hidden="true"></span>
+			<span class="zine-circle-shape zine-circle-shape--right" aria-hidden="true"></span>
+		{/if}
 		{@render children()}
 	</div>
 {/if}
