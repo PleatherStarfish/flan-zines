@@ -4,19 +4,19 @@
 	// star/planet is a crisp chunky pixel. The scene (see ./galaxy.ts) is seeded from the clock, so
 	// the sky is different on every reload.
 	//
-	// Depth is CONTINUOUS: each object carries its own parallax. Distant things (stars/nebulas/
-	// galaxies) sit in a narrow, gentle band; planets are the close foreground — they move faster
-	// AND drift sideways, carry tiny orbiting moons, and come in many procedurally-textured types
-	// (rocky/water/desert/gas/ice/lava). Each object also wraps over its own world height, so the
-	// layers never re-align and the field essentially never repeats.
+	// Depth is CONTINUOUS: each object carries its own parallax. The distant field wraps gently;
+	// planets are a close foreground stream of one-time passes with varied edges, curves, moons
+	// and procedurally-textured types (rocky/water/desert/gas/ice/lava).
 	//
 	// Honors prefers-reduced-motion by painting a single still frame. All canvas/DOM/loop work
 	// lives inside the browser-only $effect; SSR emits just the <canvas>.
 	import {
+		createPlanetPass,
 		decayBoost,
 		freshSeed,
 		generateScene,
 		mulberry32,
+		planetPassPosition,
 		type AsteroidSpec,
 		type GalaxyScene,
 		type GalaxySpec,
@@ -282,22 +282,47 @@
 
 	function bakeAsteroid(spec: AsteroidSpec): HTMLCanvasElement {
 		const R = spec.size;
-		const { canvas: c, ctx } = makeBuffer(R * 2 + 2, R * 2 + 2);
-		const cx = R + 1;
-		const cy = R + 1;
+		const extent = Math.ceil(R * Math.max(spec.stretchX, spec.stretchY)) + 3;
+		const { canvas: c, ctx } = makeBuffer(extent * 2, extent * 2);
+		const cx = extent;
+		const cy = extent;
 		const seed = spec.seed;
-		const lx = Math.cos(seed);
-		const ly = Math.sin(seed);
-		for (let py = -R; py <= R; py++) {
-			for (let px = -R; px <= R; px++) {
-				// Irregular outline: warp the radius with noise so it isn't a clean disc.
-				const ang = Math.atan2(py, px);
-				const edge =
-					R * (0.62 + 0.38 * fbm(Math.cos(ang) * 1.5 + 3, Math.sin(ang) * 1.5 + 3, seed));
-				if (Math.hypot(px, py) > edge) continue;
-				const lit = (px * lx + py * ly) / R;
-				const f = clamp01(0.5 + 0.5 * lit) * (0.7 + 0.3 * fbm(px * 0.6, py * 0.6, seed ^ 0x9b));
-				ctx.fillStyle = `rgb(${(spec.r * (0.45 + f)) | 0},${(spec.g * (0.45 + f)) | 0},${(spec.b * (0.45 + f)) | 0})`;
+		const rnd = mulberry32(seed ^ 0x51547);
+		const lightAngle = seed * 0.000017;
+		const facetR = Array.from({ length: spec.facets }, () => 0.74 + rnd() * 0.34);
+		const ca = Math.cos(-spec.rotation);
+		const sa = Math.sin(-spec.rotation);
+
+		for (let py = -extent; py <= extent; py++) {
+			for (let px = -extent; px <= extent; px++) {
+				const rx = (px * ca - py * sa) / spec.stretchX;
+				const ry = (px * sa + py * ca) / spec.stretchY;
+				const ang = Math.atan2(ry, rx);
+				const turn = (((ang + Math.PI) / (Math.PI * 2)) * spec.facets + spec.facets) % spec.facets;
+				const bi = Math.floor(turn);
+				const bt = turn - bi;
+				const edgeA = facetR[bi];
+				const edgeB = facetR[(bi + 1) % spec.facets];
+				const edge = R * lerp(edgeA, edgeB, bt * bt * (3 - 2 * bt));
+				const dist = Math.hypot(rx, ry);
+				if (dist > edge) continue;
+
+				const facetAng = ((bi + 0.5) / spec.facets) * Math.PI * 2 - Math.PI + spec.rotation;
+				const facetLight = 0.5 + 0.5 * Math.cos(facetAng - lightAngle);
+				const grain = fbm(rx * 0.38 + 7, ry * 0.38 + 3, seed ^ 0x9b);
+				let shade = 0.42 + facetLight * 0.52 + grain * 0.16;
+				if (dist > edge - 1.2) shade *= 0.62; // chipped rim
+
+				const nx = rx / R;
+				const ny = ry / R;
+				for (const cr of spec.craters) {
+					const cd = Math.hypot(nx - cr.x, ny - cr.y);
+					if (cd < cr.r) shade *= 0.46 + (cd / cr.r) * 0.28;
+					else if (cd < cr.r * 1.32) shade *= 1.12;
+				}
+
+				if (grain > 0.82 && facetLight > 0.45) shade *= 1.14;
+				ctx.fillStyle = `rgb(${clampCh(spec.r * shade) | 0},${clampCh(spec.g * shade) | 0},${clampCh(spec.b * shade) | 0})`;
 				ctx.fillRect(cx + px, cy + py, 1, 1);
 			}
 		}
@@ -437,6 +462,28 @@
 		let asteroidSprites: Sprite<AsteroidSpec>[] = [];
 		let galaxySprites: Sprite<GalaxySpec>[] = [];
 		let nebulaSprites: Sprite<NebulaSpec>[] = [];
+		let nextPlanetIndex = 0;
+		let nextPlanetCursor = 0;
+		let offset = 0;
+		let boost = 0;
+		let lastDraw = performance.now();
+		let raf = 0;
+		let lastScrollY = window.scrollY;
+		let lastTouchY: number | null = null;
+
+		function appendPlanetPass(): void {
+			const next = createPlanetPass(lw, lh, seed, nextPlanetIndex, nextPlanetCursor);
+			planetSprites.push({ canvas: bakePlanet(next.planet), spec: next.planet });
+			nextPlanetIndex++;
+			nextPlanetCursor = next.nextCursor;
+		}
+
+		function ensurePlanetLookahead(currentOffset: number): void {
+			const staleBefore = currentOffset - Math.max(lh * 1.4, 420);
+			planetSprites = planetSprites.filter((p) => p.spec.start + p.spec.span > staleBefore);
+			const horizon = currentOffset + Math.max(lh * 5, 1200);
+			while (nextPlanetCursor < horizon && planetSprites.length < 24) appendPlanetPass();
+		}
 
 		function setup(): void {
 			const w = Math.max(1, Math.ceil(window.innerWidth / PIXEL));
@@ -450,6 +497,9 @@
 
 			scene = generateScene(lw, lh, seed);
 			planetSprites = scene.planets.map((spec) => ({ canvas: bakePlanet(spec), spec }));
+			nextPlanetIndex = scene.planets.length;
+			nextPlanetCursor = scene.planets.at(-1)?.start ?? -lh * 0.58;
+			ensurePlanetLookahead(offset);
 			asteroidSprites = scene.asteroids.map((spec) => ({ canvas: bakeAsteroid(spec), spec }));
 			galaxySprites = scene.galaxies.map((spec) => ({ canvas: bakeGalaxy(spec), spec }));
 			nebulaSprites = scene.nebulas.map((spec) => ({ canvas: bakeNebula(spec), spec }));
@@ -500,37 +550,38 @@
 			timeMs: number,
 			front: boolean,
 			lx: number,
-			ly: number
+			ly: number,
+			scale: number
 		): void {
 			for (const m of spec.moons) {
 				const ang = timeMs * m.speed + m.phase;
 				if (Math.sin(ang) > 0 !== front) continue;
-				const ox = Math.cos(ang) * m.orbitR;
-				const oy = Math.sin(ang) * m.orbitR * m.squash;
+				const ox = Math.cos(ang) * m.orbitR * scale;
+				const oy = Math.sin(ang) * m.orbitR * m.squash * scale;
 				const mx = px + ox * Math.cos(m.tilt) - oy * Math.sin(m.tilt);
 				const my = py + ox * Math.sin(m.tilt) + oy * Math.cos(m.tilt);
-				drawMoonDisk(mx, my, m.size, m.r, m.g, m.b, lx, ly);
+				drawMoonDisk(mx, my, Math.max(1, Math.round(m.size * scale)), m.r, m.g, m.b, lx, ly);
 			}
 		}
 
 		function drawPlanet(sprite: Sprite<PlanetSpec>, offset: number, timeMs: number): void {
 			const { canvas: img, spec } = sprite;
-			const hw = img.width / 2;
-			const hh = img.height / 2;
-			const sx = mod(spec.x - offset * spec.driftX, lw);
-			const sy = mod(spec.y - offset * spec.parallaxY, spec.worldH);
+			const pos = planetPassPosition(spec, offset);
+			if (!pos.visible) return;
+			const scale = spec.scale;
+			const dw = Math.max(1, Math.round(img.width * scale));
+			const dh = Math.max(1, Math.round(img.height * scale));
+			const hw = dw / 2;
+			const hh = dh / 2;
 			const lx = Math.cos(spec.lightAngle);
 			const ly = Math.sin(spec.lightAngle);
-			const reach = Math.max(hw, hh) + spec.moons.reduce((mx, m) => Math.max(mx, m.orbitR), 0);
-			for (const cxp of [sx, sx - lw, sx + lw]) {
-				if (cxp + reach < 0 || cxp - reach > lw) continue;
-				for (const cyp of [sy, sy - spec.worldH]) {
-					if (cyp + reach < 0 || cyp - reach > lh) continue;
-					drawMoons(spec, cxp, cyp, timeMs, false, lx, ly);
-					ctx!.drawImage(img, Math.floor(cxp - hw), Math.floor(cyp - hh));
-					drawMoons(spec, cxp, cyp, timeMs, true, lx, ly);
-				}
-			}
+			const reach =
+				Math.max(hw, hh) + spec.moons.reduce((mx, m) => Math.max(mx, m.orbitR * scale), 0);
+			if (pos.x + reach < 0 || pos.x - reach > lw || pos.y + reach < 0 || pos.y - reach > lh)
+				return;
+			drawMoons(spec, pos.x, pos.y, timeMs, false, lx, ly, scale);
+			ctx!.drawImage(img, Math.floor(pos.x - hw), Math.floor(pos.y - hh), dw, dh);
+			drawMoons(spec, pos.x, pos.y, timeMs, true, lx, ly, scale);
 		}
 
 		function drawStars(offset: number, timeMs: number): void {
@@ -580,6 +631,8 @@
 		}
 
 		function draw(offset: number, timeMs: number): void {
+			ensurePlanetLookahead(offset);
+
 			const g = ctx!.createLinearGradient(0, 0, 0, lh);
 			g.addColorStop(0, '#0b0a1f');
 			g.addColorStop(0.5, '#070611');
@@ -638,13 +691,6 @@
 			window.addEventListener('resize', onResize);
 			return () => window.removeEventListener('resize', onResize);
 		}
-
-		let offset = 0;
-		let boost = 0;
-		let lastDraw = performance.now();
-		let raf = 0;
-		let lastScrollY = window.scrollY;
-		let lastTouchY: number | null = null;
 
 		const addBoost = (delta: number) => {
 			boost = clamp(boost + delta, -MAX_BOOST, MAX_BOOST);

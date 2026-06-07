@@ -10,10 +10,10 @@
 // in one scene — look genuinely different, and the renderer turns those numbers into surfaces
 // with domain-warped value noise.
 //
-// Two ideas keep the field from ever looking repetitive: CONTINUOUS DEPTH (every object carries
-// its own parallax) and PER-OBJECT WRAP HEIGHT (each wraps over its own multiple of the
-// viewport, so the layers never re-align and repeats are essentially nonexistent). A few stars
-// also sit CLOSER, rendered with a diffraction/distortion pattern so depth reads in the sky too.
+// The deep field wraps gently because it reads as atmosphere. Foreground planets do NOT wrap:
+// they are a seeded stream of one-time passes, each with its own entry edge, curve, wobble,
+// scale and surface seed. That keeps the universe reproducible in tests without making a
+// memorable planet climb out of the same corner over and over.
 
 type RGB = readonly [number, number, number];
 
@@ -65,11 +65,20 @@ export interface PlanetParams {
 }
 
 export interface PlanetSpec {
-	x: number; // [0, lw)
-	y: number; // [0, worldH)
-	worldH: number;
-	parallaxY: number; // near → faster than the distant band
-	driftX: number; // signed horizontal scroll factor (close objects slide sideways too)
+	passIndex: number;
+	start: number; // scroll/ambient offset at which this one-time pass begins
+	span: number; // offset distance from off-screen entry to off-screen exit
+	entryEdge: 'bottom' | 'left' | 'right' | 'top';
+	fromX: number;
+	fromY: number;
+	toX: number;
+	toY: number;
+	curveX: number;
+	curveY: number;
+	wobble: number;
+	wobblePhase: number;
+	depth: number; // foreground depth; higher = larger/faster-feeling
+	scale: number;
 	type: PlanetType; // the prototype
 	radius: number;
 	r: number; // base tone
@@ -99,6 +108,11 @@ export interface AsteroidSpec {
 	worldH: number;
 	parallax: number;
 	size: number;
+	stretchX: number;
+	stretchY: number;
+	rotation: number;
+	facets: number;
+	craters: { x: number; y: number; r: number }[];
 	r: number;
 	g: number;
 	b: number;
@@ -147,10 +161,17 @@ export interface GalaxyScene {
 	lh: number;
 	seed: number;
 	stars: StarSpec[];
-	planets: PlanetSpec[];
+	planets: PlanetSpec[]; // initial foreground pass queue, sorted by start
 	asteroids: AsteroidSpec[];
 	galaxies: GalaxySpec[];
 	nebulas: NebulaSpec[];
+}
+
+export interface PlanetPassPosition {
+	progress: number;
+	visible: boolean;
+	x: number;
+	y: number;
 }
 
 // --- PRNG -----------------------------------------------------------------
@@ -493,14 +514,179 @@ function makeMoons(rnd: () => number, planetRadius: number): MoonSpec[] {
 	return moons;
 }
 
+function seedFor(seed: number, index: number, salt = 0): number {
+	let h = (seed ^ Math.imul(index + 1, 0x9e3779b9) ^ salt) >>> 0;
+	h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+	h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+	return (h ^ (h >>> 16)) >>> 0;
+}
+
+function edgePoint(
+	rnd: () => number,
+	edge: PlanetSpec['entryEdge'],
+	w: number,
+	h: number,
+	pad: number,
+	exit = false
+): { x: number; y: number } {
+	switch (edge) {
+		case 'left':
+			return {
+				x: exit ? w + pad : -pad,
+				y: exit ? range(rnd, -pad, h * 0.58) : range(rnd, h * 0.36, h + pad)
+			};
+		case 'right':
+			return {
+				x: exit ? -pad : w + pad,
+				y: exit ? range(rnd, -pad, h * 0.58) : range(rnd, h * 0.36, h + pad)
+			};
+		case 'top':
+			return {
+				x: exit ? range(rnd, -pad, w + pad) : range(rnd, 0, w),
+				y: exit ? h + pad : -pad
+			};
+		default:
+			return {
+				x: range(rnd, -pad, w + pad),
+				y: exit ? -pad : h + pad
+			};
+	}
+}
+
+function makePlanetPassBody(
+	rnd: () => number,
+	w: number,
+	h: number,
+	passIndex: number
+): PlanetSpec {
+	const type = weightedType(rnd);
+	const depth = range(rnd, 0.72, 1.36);
+	const isGas = type === 'gas';
+	const radius = Math.round(
+		(isGas ? range(rnd, 14, 28) : range(rnd, 5, 16) * (rnd() < 0.15 ? 0.65 : 1)) *
+			(0.82 + depth * 0.28)
+	);
+	const [baseRGB, accentRGB, detailRGB] = pick(rnd, PLANET_PALETTES[type]);
+	const [r, g, b] = jitter(rnd, baseRGB, 16);
+	const [r2, g2, b2] = jitter(rnd, accentRGB, 16);
+	const [r3, g3, b3] = jitter(rnd, detailRGB, 16);
+	const [ringR, ringG, ringB] = jitter(rnd, pick(rnd, RING_COLORS), 12);
+	const edgeRoll = rnd();
+	const entryEdge: PlanetSpec['entryEdge'] =
+		edgeRoll < 0.52 ? 'bottom' : edgeRoll < 0.72 ? 'left' : edgeRoll < 0.92 ? 'right' : 'top';
+	const pad = Math.max(radius * 3.2, 28);
+	const from = edgePoint(rnd, entryEdge, w, h, pad);
+	const to = edgePoint(rnd, entryEdge, w, h, pad, true);
+	const diagonal = Math.hypot(to.x - from.x, to.y - from.y);
+	const span = Math.max(h * 1.15, diagonal * range(rnd, 1.5, 2.8) * (1.25 - depth * 0.22));
+	const sideways = entryEdge === 'bottom' || entryEdge === 'top';
+	const curve = range(rnd, h * 0.08, h * 0.38) * (rnd() < 0.5 ? -1 : 1);
+
+	return {
+		passIndex,
+		start: 0,
+		span,
+		entryEdge,
+		fromX: from.x,
+		fromY: from.y,
+		toX: to.x,
+		toY: to.y,
+		curveX: sideways ? curve : range(rnd, -w * 0.08, w * 0.08),
+		curveY: sideways ? range(rnd, -h * 0.08, h * 0.08) : curve,
+		wobble: range(rnd, 2, 10) * depth,
+		wobblePhase: rnd() * Math.PI * 2,
+		depth,
+		scale: range(rnd, 0.88, 1.18),
+		type,
+		radius: Math.max(4, radius),
+		r,
+		g,
+		b,
+		r2,
+		g2,
+		b2,
+		r3,
+		g3,
+		b3,
+		params: makeParams(type, rnd),
+		storm: isGas && rnd() < 0.65,
+		lightAngle: rnd() * Math.PI * 2,
+		ring: isGas ? rnd() < 0.6 : rnd() < 0.2,
+		ringR,
+		ringG,
+		ringB,
+		ringSquash: range(rnd, 0.3, 0.52),
+		moons: makeMoons(rnd, Math.max(4, radius)),
+		seed: Math.floor(rnd() * 0x7fffffff)
+	};
+}
+
+export function createPlanetPass(
+	lw: number,
+	lh: number,
+	seed: number,
+	index: number,
+	cursor: number
+): { planet: PlanetSpec; nextCursor: number } {
+	const w = Math.max(1, Math.floor(lw));
+	const h = Math.max(1, Math.floor(lh));
+	const rnd = mulberry32(seedFor(seed, index, 0x706c616e));
+	const first = index === 0;
+	const cluster = !first && rnd() < 0.18;
+	const gap = first
+		? range(rnd, -h * 0.65, h * 0.75)
+		: cluster
+			? range(rnd, h * 0.18, h * 0.56)
+			: range(rnd, h * 0.78, h * 2.8);
+	const start = cursor + gap;
+	const planet = makePlanetPassBody(rnd, w, h, index);
+	planet.start = start;
+	return { planet, nextCursor: start };
+}
+
+export function generatePlanetPasses(
+	lw: number,
+	lh: number,
+	seed: number,
+	count: number,
+	cursor = -Math.max(1, Math.floor(lh)) * 0.58,
+	startIndex = 0
+): PlanetSpec[] {
+	const passes: PlanetSpec[] = [];
+	let nextCursor = cursor;
+	for (let i = 0; i < count; i++) {
+		const next = createPlanetPass(lw, lh, seed, startIndex + i, nextCursor);
+		passes.push(next.planet);
+		nextCursor = next.nextCursor;
+	}
+	return passes;
+}
+
+export function planetPassPosition(spec: PlanetSpec, offset: number): PlanetPassPosition {
+	const progress = (offset - spec.start) / spec.span;
+	const t = clamp(progress, 0, 1);
+	const arch = Math.sin(t * Math.PI);
+	const wobble = Math.sin(t * Math.PI * 2 + spec.wobblePhase) * spec.wobble * arch;
+	return {
+		progress,
+		visible: progress >= 0 && progress <= 1,
+		x: rangeValue(spec.fromX, spec.toX, t) + spec.curveX * arch + wobble,
+		y: rangeValue(spec.fromY, spec.toY, t) + spec.curveY * arch - wobble * 0.35
+	};
+}
+
+function rangeValue(a: number, b: number, t: number): number {
+	return a + (b - a) * t;
+}
+
 export interface GenerateOptions {
 	starDensity?: number;
 }
 
 /**
  * Lay out the whole universe for a `lw × lh` low-res canvas, deterministically from `seed`.
- * Planets are intentionally RARE (often zero, occasionally a couple — and when there are two,
- * the prototype+variation model keeps them looking distinct).
+ * The deep field is static scene data. Planets are the initial chunk of a deterministic
+ * foreground pass stream; the renderer can extend that stream as the page keeps moving.
  */
 export function generateScene(
 	lw: number,
@@ -554,64 +740,30 @@ export function generateScene(
 		stars[i].y = Math.floor(rnd() * stars[i].worldH);
 	}
 
-	// --- planets (RARE; prototype + variation; near band; drift on X; moons; rings) ---
-	const planets: PlanetSpec[] = [];
-	const planetSlots = clamp(Math.round(area / 50000), 1, 3);
-	for (let i = 0; i < planetSlots; i++) {
-		if (rnd() > 0.4) continue; // each slot only sometimes yields a planet → genuinely rare
-		const type = weightedType(rnd);
-		const depth = rnd();
-		const isGas = type === 'gas';
-		const radius = Math.round(
-			isGas ? range(rnd, 14, 28) : range(rnd, 5, 16) * (rnd() < 0.15 ? 0.65 : 1)
-		);
-		const [baseRGB, accentRGB, detailRGB] = pick(rnd, PLANET_PALETTES[type]);
-		const [r, g, b] = jitter(rnd, baseRGB, 16);
-		const [r2, g2, b2] = jitter(rnd, accentRGB, 16);
-		const [r3, g3, b3] = jitter(rnd, detailRGB, 16);
-		const [ringR, ringG, ringB] = jitter(rnd, pick(rnd, RING_COLORS), 12);
-		const idx = planets.length;
-		planets.push({
-			x: Math.floor(rnd() * w),
-			worldH: Math.round(Math.max(h * range(rnd, 1.3, 2.2), h + radius * 4)),
-			y: 0,
-			parallaxY: 1.0 + depth * 0.45,
-			driftX: (rnd() - 0.5) * range(rnd, 0.2, 0.9),
-			type,
-			radius: Math.max(4, radius),
-			r,
-			g,
-			b,
-			r2,
-			g2,
-			b2,
-			r3,
-			g3,
-			b3,
-			params: makeParams(type, rnd),
-			storm: isGas && rnd() < 0.65,
-			lightAngle: rnd() * Math.PI * 2,
-			ring: isGas ? rnd() < 0.6 : rnd() < 0.2, // occasional rings on any prototype
-			ringR,
-			ringG,
-			ringB,
-			ringSquash: range(rnd, 0.3, 0.52),
-			moons: makeMoons(rnd, Math.max(4, radius)),
-			seed: Math.floor(rnd() * 0x7fffffff)
-		});
-		planets[idx].y = Math.floor(rnd() * planets[idx].worldH);
-	}
+	// --- planets (foreground event stream; one-time passes, not wrapping tiles) ---
+	const planets = generatePlanetPasses(w, h, seed, 12);
 
 	// --- asteroids (occasional singles + the odd loose belt; mid-near band) ---
 	const asteroids: AsteroidSpec[] = [];
 	const pushAsteroid = (cx: number, cy: number, worldH: number, parallax: number) => {
 		const [r, g, b] = jitter(rnd, [128, 120, 112], 22);
+		const size = Math.max(2, Math.round(range(rnd, 2, 8)));
+		const craterCount = Math.round(range(rnd, size > 5 ? 2 : 1, size > 5 ? 5 : 3));
 		asteroids.push({
 			x: Math.floor(((cx % w) + w) % w),
 			y: Math.floor(((cy % worldH) + worldH) % worldH),
 			worldH,
 			parallax,
-			size: Math.max(2, Math.round(range(rnd, 2, 7))),
+			size,
+			stretchX: range(rnd, 0.82, 1.34),
+			stretchY: range(rnd, 0.72, 1.16),
+			rotation: rnd() * Math.PI * 2,
+			facets: Math.round(range(rnd, 7, 13)),
+			craters: Array.from({ length: craterCount }, () => ({
+				x: range(rnd, -0.45, 0.45),
+				y: range(rnd, -0.45, 0.45),
+				r: range(rnd, 0.12, 0.28)
+			})),
 			r,
 			g,
 			b,

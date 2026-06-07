@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+	createPlanetPass,
 	decayBoost,
 	freshSeed,
 	generateScene,
+	generatePlanetPasses,
 	mulberry32,
+	planetPassPosition,
 	PLANET_TYPES,
 	type GalaxyScene
 } from './galaxy';
@@ -74,7 +77,10 @@ describe('generateScene', () => {
 		expect(nearCount).toBeGreaterThan(0); // some closer stars exist
 		for (const n of scene.nebulas) expect(n.parallax).toBeLessThan(0.55);
 		for (const g of scene.galaxies) expect(g.parallax).toBeLessThan(0.47);
-		for (const p of scene.planets) expect(p.parallaxY).toBeGreaterThanOrEqual(1.0); // foreground
+		for (const p of scene.planets) {
+			expect(p.depth).toBeGreaterThan(0.7); // foreground pass
+			expect(p.span).toBeGreaterThan(320);
+		}
 	});
 
 	it('gives each planet a prototype + a noise VARIATION (so same-prototype planets differ)', () => {
@@ -111,23 +117,44 @@ describe('generateScene', () => {
 		expect(ringedTypes.size).toBeGreaterThanOrEqual(1);
 	});
 
-	it('makes planets rare (often zero, occasionally a couple) and lets them drift on X', () => {
-		let withZero = 0;
-		let maxCount = 0;
-		let sawDrift = false;
-		for (let seed = 0; seed < 60; seed++) {
-			const { planets } = generateScene(500, 320, seed);
-			if (planets.length === 0) withZero++;
-			maxCount = Math.max(maxCount, planets.length);
-			for (const p of planets) {
-				expect(PLANET_TYPES).toContain(p.type);
-				expect(p.radius).toBeGreaterThan(0);
-				if (Math.abs(p.driftX) > 0.03) sawDrift = true; // closer → scrolls on the X axis too
-			}
+	it('schedules planets as varied one-time foreground passes instead of wrapping slots', () => {
+		const passes = generatePlanetPasses(500, 320, 77, 18);
+		const again = generatePlanetPasses(500, 320, 77, 18);
+		expect(passes).toEqual(again);
+		expect(passes).toHaveLength(18);
+
+		const entryEdges = new Set(passes.map((p) => p.entryEdge));
+		const bodySignatures = new Set(
+			passes.map((p) => `${p.type}:${Math.round(p.radius / 3)}:${Math.round(p.seed / 1000)}`)
+		);
+		const gapBuckets = new Set(
+			passes.slice(1).map((p, index) => Math.round((p.start - passes[index].start) / 32))
+		);
+		expect(entryEdges.size).toBeGreaterThanOrEqual(2);
+		expect(bodySignatures.size).toBeGreaterThan(14);
+		expect(gapBuckets.size).toBeGreaterThan(5);
+
+		for (const p of passes) {
+			expect(PLANET_TYPES).toContain(p.type);
+			expect(p.radius).toBeGreaterThan(0);
+			expect(p.start).toBeGreaterThanOrEqual(passes[0].start);
+			expect(planetPassPosition(p, p.start - 1).visible).toBe(false);
+			expect(planetPassPosition(p, p.start + p.span + 1).visible).toBe(false);
+			const mid = planetPassPosition(p, p.start + p.span * 0.5);
+			expect(mid.visible).toBe(true);
+			expect(Number.isFinite(mid.x)).toBe(true);
+			expect(Number.isFinite(mid.y)).toBe(true);
 		}
-		expect(withZero).toBeGreaterThan(0); // genuinely sometimes empty
-		expect(maxCount).toBeLessThanOrEqual(3);
-		expect(sawDrift).toBe(true);
+	});
+
+	it('can extend the same planet stream without repeating the last pass', () => {
+		const initial = generatePlanetPasses(500, 320, 9, 6);
+		const last = initial.at(-1)!;
+		const next = createPlanetPass(500, 320, 9, 6, last.start).planet;
+		expect(next.start).toBeGreaterThan(last.start);
+		expect(`${next.type}:${next.seed}:${next.entryEdge}`).not.toBe(
+			`${last.type}:${last.seed}:${last.entryEdge}`
+		);
 	});
 
 	it('covers the full spread of planet types across seeds', () => {
@@ -158,13 +185,22 @@ describe('generateScene', () => {
 	it('scatters occasional asteroids (sometimes none, sometimes a belt)', () => {
 		let sawNone = false;
 		let sawMany = false;
+		let sawCratered = false;
 		for (let seed = 0; seed < 80; seed++) {
-			const n = generateScene(560, 360, seed).asteroids.length;
+			const asteroids = generateScene(560, 360, seed).asteroids;
+			const n = asteroids.length;
 			if (n === 0) sawNone = true;
 			if (n >= 4) sawMany = true; // a belt cluster
+			for (const asteroid of asteroids) {
+				expect(asteroid.stretchX).toBeGreaterThan(0);
+				expect(asteroid.stretchY).toBeGreaterThan(0);
+				expect(asteroid.facets).toBeGreaterThanOrEqual(7);
+				if (asteroid.craters.length > 0) sawCratered = true;
+			}
 		}
 		expect(sawNone).toBe(true);
 		expect(sawMany).toBe(true);
+		expect(sawCratered).toBe(true);
 	});
 
 	it('always lays out at least one galaxy and one nebula', () => {
