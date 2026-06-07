@@ -1,12 +1,6 @@
 <script lang="ts">
 	import { getBlock } from '$lib/zine/registry';
-	import type {
-		Element,
-		ElementTrack,
-		Scene,
-		SceneType,
-		ZineDocument
-	} from '$lib/zine/schema/document';
+	import type { Element, Scene, SceneType, ZineDocument } from '$lib/zine/schema/document';
 	import BlockInspector from './BlockInspector.svelte';
 	import EffectPicker from './EffectPicker.svelte';
 	import SectionInspector from './SectionInspector.svelte';
@@ -31,16 +25,6 @@
 		parallax: 'Parallax',
 		sidescroll: 'Side-scroll',
 		data: 'Data'
-	};
-	const trackChoices: { track: ElementTrack; label: string }[] = [
-		{ track: 'content', label: 'Words' },
-		{ track: 'media', label: 'Pictures' },
-		{ track: 'background', label: 'Backdrop' }
-	];
-	const trackLabels: Record<ElementTrack, string> = {
-		content: 'Words',
-		media: 'Pictures',
-		background: 'Backdrop'
 	};
 
 	const scene = $derived(findScene(store.doc, sceneId));
@@ -73,6 +57,14 @@
 			if (typeof props.text === 'string' && props.text.trim()) return props.text;
 		}
 		return getBlock(element.block.type)?.label ?? 'Clip';
+	}
+
+	function elementDepthLabel(scene: Scene, element: Element): string {
+		const index = scene.elements.findIndex((candidate) => candidate.id === element.id);
+		if (index < 0 || scene.elements.length === 1) return 'Only track';
+		if (index === 0) return 'Shows on top';
+		if (index === scene.elements.length - 1) return 'Shows on bottom';
+		return `Track ${index + 1} of ${scene.elements.length}`;
 	}
 
 	function findScene(doc: ZineDocument, id: string): Scene | null {
@@ -113,7 +105,7 @@
 							<h3>{elementTitle(selectedBlock.element)}</h3>
 							<div class="rail-hero__meta">
 								<span>{getBlock(selectedBlock.block.type)?.label ?? selectedBlock.block.type}</span>
-								<span>{trackLabels[selectedBlock.element.track]}</span>
+								<span>{elementDepthLabel(scene, selectedBlock.element)}</span>
 							</div>
 							<button type="button" onclick={() => store.select(scene.id)}>
 								Edit scene settings
@@ -121,26 +113,6 @@
 						</section>
 						<BlockInspector {store} element={selectedBlock.element} />
 						<EffectPicker {store} element={selectedBlock.element} onEditPath={openPathEditor} />
-						<details class="rail-disclosure">
-							<summary>
-								<span>Layer</span>
-								<strong>{trackLabels[selectedBlock.element.track]}</strong>
-							</summary>
-							<div class="chip-grid">
-								{#each trackChoices as choice (choice.track)}
-									<button
-										type="button"
-										aria-pressed={selectedBlock.element.track === choice.track}
-										onclick={() => store.updateElementTrack(selectedBlock.element.id, choice.track)}
-									>
-										{choice.label}
-									</button>
-								{/each}
-							</div>
-							<p class="rail-hint">
-								Words stay readable. Pictures sit with art. Backdrop tucks behind.
-							</p>
-						</details>
 					{/key}
 				{:else}
 					<section class="rail-hero" aria-label="Current scene">
@@ -176,7 +148,22 @@
 <style>
 	.scene-editor {
 		min-height: 100%;
-		background: transparent;
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.08) 1px, transparent 1px),
+			linear-gradient(oklch(0.24 0.065 281 / 0.06) 1px, transparent 1px),
+			linear-gradient(
+				135deg,
+				oklch(0.67 0.15 200 / 0.16) 0 25%,
+				transparent 25% 50%,
+				oklch(0.55 0.19 339 / 0.1) 50% 75%,
+				transparent 75% 100%
+			),
+			var(--pixel-backdrop);
+		background-size:
+			24px 24px,
+			24px 24px,
+			96px 96px,
+			auto;
 	}
 	.scene-editor__header {
 		position: sticky;
@@ -187,16 +174,22 @@
 		align-items: center;
 		gap: 1rem;
 		border-bottom: 2px solid var(--pixel-ink);
-		background: oklch(0.92 0.035 84 / 0.96);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.08) 1px, transparent 1px),
+			linear-gradient(0deg, oklch(0.24 0.065 281 / 0.06) 1px, transparent 1px),
+			oklch(0.92 0.035 84 / 0.97);
+		background-size: 12px 12px;
+		box-shadow: 0 0.18rem 0 oklch(0.24 0.065 281 / 0.16);
 		padding: 0.85rem 1.25rem;
 	}
 	.scene-editor__header p {
 		margin: 0 0 0.1rem;
 		font-size: 0.72rem;
 		font-weight: 750;
-		letter-spacing: 0.08em;
+		letter-spacing: 0;
 		text-transform: uppercase;
 		color: hsl(var(--muted-foreground));
+		font-family: var(--pixel-font-ui);
 	}
 	.scene-editor__header h2 {
 		margin: 0;
@@ -213,9 +206,11 @@
 	}
 	.back-button,
 	.done-button {
-		border-radius: 0.5rem;
+		border-radius: var(--pixel-radius);
+		font-family: var(--pixel-font-ui);
 		font-size: 0.88rem;
 		font-weight: 850;
+		text-transform: uppercase;
 	}
 	.back-button {
 		border: 2px solid var(--pixel-ink);
@@ -254,12 +249,12 @@
 		border-left: 2px solid var(--pixel-ink);
 		background:
 			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.055) 1px, transparent 1px),
-			oklch(0.9 0.038 82 / 0.9);
+			linear-gradient(0deg, oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px),
+			oklch(0.9 0.038 82 / 0.92);
 		background-size: 14px 14px;
 		padding: 1rem;
 	}
-	.rail-hero,
-	.rail-disclosure {
+	.rail-hero {
 		display: grid;
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
@@ -275,8 +270,9 @@
 		color: hsl(var(--muted-foreground));
 		font-size: 0.68rem;
 		font-weight: 900;
-		letter-spacing: 0.08em;
+		letter-spacing: 0;
 		text-transform: uppercase;
+		font-family: var(--pixel-font-ui);
 	}
 	.rail-hero h3 {
 		margin: 0;
@@ -296,6 +292,7 @@
 		background: var(--pixel-paper);
 		padding: 0.12rem 0.4rem;
 		color: hsl(var(--muted-foreground));
+		font-family: var(--pixel-font-ui);
 		font-size: 0.7rem;
 		font-weight: 800;
 	}
@@ -304,63 +301,15 @@
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
 		background: var(--pixel-paper);
-		box-shadow: 0.1rem 0.1rem 0 var(--pixel-ink);
+		box-shadow: var(--pixel-shadow-xs);
 		padding: 0.42rem 0.62rem;
 		color: hsl(var(--foreground));
+		font-family: var(--pixel-font-ui);
 		font-size: 0.8rem;
 		font-weight: 850;
+		text-transform: uppercase;
 	}
-	.rail-disclosure {
-		padding: 0.65rem;
-	}
-	.rail-disclosure summary {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) max-content;
-		align-items: center;
-		gap: 0.45rem;
-		cursor: pointer;
-		color: hsl(var(--foreground));
-		font-size: 0.8rem;
-		font-weight: 850;
-	}
-	.rail-disclosure summary strong {
-		border: 1px solid oklch(0.24 0.065 281 / 0.32);
-		border-radius: var(--pixel-radius);
-		background: var(--pixel-paper);
-		padding: 0.12rem 0.38rem;
-		color: hsl(var(--muted-foreground));
-		font-size: 0.7rem;
-		font-weight: 800;
-	}
-	.rail-disclosure[open] summary {
-		margin-bottom: 0.6rem;
-	}
-	.chip-grid {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 0.45rem;
-	}
-	.chip-grid button {
-		border: 2px solid var(--pixel-ink);
-		border-radius: var(--pixel-radius);
-		background: var(--pixel-paper);
-		padding: 0.45rem 0.5rem;
-		font-size: 0.8rem;
-		font-weight: 850;
-		color: hsl(var(--foreground));
-	}
-	.chip-grid button[aria-pressed='true'] {
-		background: var(--pixel-green);
-	}
-	.rail-hint {
-		margin: 0.55rem 0 0;
-		color: hsl(var(--muted-foreground));
-		font-size: 0.74rem;
-		line-height: 1.35;
-	}
-	.rail-hero button:focus-visible,
-	.rail-disclosure summary:focus-visible,
-	.chip-grid button:focus-visible {
+	.rail-hero button:focus-visible {
 		outline: 3px solid var(--pixel-cyan);
 		outline-offset: 2px;
 	}

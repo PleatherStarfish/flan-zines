@@ -604,7 +604,7 @@
 		color: hsl(var(--muted-foreground));
 		font-size: 0.68rem;
 		font-weight: 900;
-		letter-spacing: 0.08em;
+		letter-spacing: 0;
 		text-transform: uppercase;
 	}
 	.rich-modal__header h2 {

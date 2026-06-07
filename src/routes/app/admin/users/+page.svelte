@@ -49,12 +49,12 @@
 		font-weight: 700;
 	}
 	.banner--error {
-		border-color: #b91c1c;
-		color: #b91c1c;
+		border-color: var(--pixel-red);
+		color: var(--pixel-red);
 	}
 	.banner--ok {
-		border-color: #166534;
-		color: #166534;
+		border-color: var(--pixel-green);
+		color: oklch(0.34 0.12 151);
 	}
 	.empty {
 		color: hsl(var(--muted-foreground));
@@ -73,7 +73,15 @@
 		gap: 1rem;
 		border: 2px solid var(--pixel-ink, hsl(var(--border)));
 		border-radius: var(--pixel-radius, 0.4rem);
-		background: hsl(var(--background));
+		background:
+			linear-gradient(var(--pixel-ink), var(--pixel-ink)) 0 0 / 100% 0.22rem no-repeat,
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px),
+			hsl(var(--background));
+		background-size:
+			100% 0.22rem,
+			12px 12px,
+			auto;
+		box-shadow: var(--pixel-shadow-xs);
 		padding: 0.5rem 0.75rem;
 	}
 	.person__identity {
@@ -87,6 +95,7 @@
 	}
 	.person__meta {
 		color: hsl(var(--muted-foreground));
+		font-family: var(--pixel-font-ui);
 		font-size: 0.74rem;
 		font-weight: 750;
 		text-transform: capitalize;
@@ -103,12 +112,14 @@
 		border-radius: var(--pixel-radius, 0.35rem);
 		background: hsl(var(--background));
 		padding: 0.3rem 0.5rem;
+		font-family: var(--pixel-font-ui);
 		font-size: 0.82rem;
 		font-weight: 700;
 		text-transform: capitalize;
 	}
 	.person__role button {
 		background: var(--pixel-yellow, hsl(var(--muted)));
+		box-shadow: var(--pixel-shadow-xs);
 		cursor: pointer;
 		text-transform: none;
 	}

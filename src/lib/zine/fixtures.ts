@@ -117,14 +117,14 @@ export const sampleZineRaw: unknown = {
 									doc: doc(
 										paragraph(
 											t(
-												'I started mapping runoff because the same curb at 9th and Willow made a nickel-colored puddle exactly 18 minutes after rain began. That is not rigorous hydrology, but it is a very good way to become annoying on walks.'
+												'I started mapping runoff because the same curb at 9th and Willow made a nickel-colored puddle 18 minutes after rain began, regular as a train. The puddle was not picturesque. It was a small instrument: a low spot, a catch basin, a street slope, and a weather report arguing in public.'
 											)
 										),
 										paragraph(
 											t('The official map calls the grates '),
 											t('assets', [italic()]),
 											t(
-												'. The rain calls them low points. This zine follows one storm through roof leaders, curb openings, a combined pipe, and a creek that got daylighted after a century underground. Think '
+												'. The rain calls them low points. This zine follows one ordinary storm through roof leaders, curb openings, a combined pipe, and a creek that spent a century underground before the city admitted it was still a creek. Think '
 											),
 											t('reported prose with a tiny hydrograph brain', [bold()]),
 											t(', plus the visual-essay energy I love in places like '),
@@ -132,9 +132,9 @@ export const sampleZineRaw: unknown = {
 											t('.')
 										),
 										bulletList(
-											'Find the crown of the road, not the prettiest puddle.',
-											'Identify the inlet: grated, curb-opening, or combo, because each one fails differently.',
-											'Assume the first few millimeters of runoff are the grossest and write down what they probably picked up.'
+											'Find the crown of the road first; every puddle is downstream of a choice in grading.',
+											'Identify the inlet: grated, curb-opening, or combo, because each one clogs differently.',
+											'Write down time, depth, and smell before writing down your theory. The theory will try to get bossy.'
 										)
 									)
 								}
@@ -209,17 +209,17 @@ export const sampleZineRaw: unknown = {
 									doc: doc(
 										paragraph(
 											t(
-												'The first minutes of a storm are not romantic. They are a solvent test. Roof grit, tire dust, pollen, pulverized leaf bits, brake-pad metal, and snack-wrapper archaeology all start moving before the street has even decided where the puddles live.'
+												'The first minutes of a storm are not romantic. They are a solvent test. Roof grit, tire dust, pollen, pulverized leaves, brake-pad metal, and the mineral dust of tires all begin to move before the street has even decided where the puddles belong.'
 											)
 										),
 										orderedList(
-											'Roof: 1 mm of rain on 1 square meter is 1 liter, so a 6 mm shower on a 60 square meter roof is suddenly 360 liters looking for a downspout.',
-											'Curb: sheet flow becomes gutter flow once it finds the longitudinal slope; every leaf mat is a tiny, terrible detention basin.',
-											'Pipe: in an old combined system, the cute sidewalk stream becomes a capacity problem with a pipe diameter.'
+											'Roof: 1 mm of rain on 1 square meter is 1 liter, so a 6 mm shower on a 60 square meter roof sends about 360 liters toward a downspout.',
+											'Block: the USGS conversion is useful and rude: 1 inch of rain on 1 acre is 27,154 gallons, before infiltration, storage, or loss.',
+											'Pipe: in an old combined system, a sidewalk stream becomes a capacity problem with a diameter, a slope, and a treatment plant at the far end.'
 										),
 										paragraph(
 											t(
-												"That is why the boring details matter: curb reveal height, inlet spacing, grate clogging, soil infiltration, and whether the street gives water a place to pause before it becomes somebody downstream's problem."
+												"That is why the boring details matter: curb reveal height, inlet spacing, grate clogging, soil infiltration, and whether the street gives water a place to slow down before it becomes somebody downstream's problem. The drama is not the rain. The drama is the routing."
 											)
 										)
 									)
@@ -287,7 +287,12 @@ export const sampleZineRaw: unknown = {
 									doc: doc(
 										paragraph(
 											t(
-												'The first pulse looks cloudy because pavement has been dry-storage for everything the block forgot about. In my notebook, the useful observation is not "dirty water." It is timing: cloudy at t+6 minutes, clearer by t+31, leaf line 14 cm above yesterday\'s baseflow.'
+												'The first pulse looks cloudy because pavement has been dry-storage for everything the block forgot about. In my notebook, the useful observation is not "dirty water." It is timing: rain begins at 3:12 p.m.; inlet rattle at t+4; brown fan at the outfall at t+9; water visibly clearer by t+31. The leaf line the next morning is 14 cm above yesterday\'s baseflow.'
+											)
+										),
+										paragraph(
+											t(
+												'Engineers call the shape a hydrograph: a rising limb, a peak, and a falling limb. On a small urban catchment, the rising limb can be indecently quick. Pavement has almost no patience.'
 											)
 										)
 									)
@@ -322,7 +327,12 @@ export const sampleZineRaw: unknown = {
 									doc: doc(
 										paragraph(
 											t(
-												'Combined sewer overflow is not a cartoon villain; it is math with bad vibes. The pipe has dry-weather flow, storm inflow, groundwater sneaking in through joints, and whatever storage the system can borrow before it has to spill.'
+												'Combined sewer overflow is not a cartoon villain; it is old math under new weather. In a combined system, stormwater and sanitary sewage share the same pipe. EPA says CSOs remain a water-quality and public-health concern for roughly 700 U.S. communities, which is a calm sentence describing a very uncalm design inheritance.'
+											)
+										),
+										paragraph(
+											t(
+												'The pipe has dry-weather flow, storm inflow, groundwater sneaking in through tired joints, and whatever storage the system can borrow before it has to spill. During a hard burst, the question is not whether water is dirty in some abstract way. The question is whether the system can keep it inside long enough to treat it.'
 											)
 										)
 									)
@@ -341,11 +351,11 @@ export const sampleZineRaw: unknown = {
 									doc: doc(
 										paragraph(
 											t(
-												'By the next morning, the channel pretends nothing happened. The evidence is tiny and excellent: '
+												'By the next morning, the channel resumes its innocent expression. The evidence is small, durable, and excellent: '
 											),
 											t('a leaf line', [bold()]),
 											t(
-												', pea gravel sorted on the inside bend, a damp brick arch, and one new sandbar exactly where the outfall punches the current.'
+												', pea gravel sorted on the inside bend, a damp brick arch, and one new sandbar exactly where the outfall punches the current. You learn to read these leftovers the way a copy editor reads punctuation: not as decoration, but as where the sentence turns.'
 											)
 										)
 									)
@@ -641,16 +651,21 @@ export const sampleZineRaw: unknown = {
 									doc: doc(
 										paragraph(
 											t(
-												'To daylight a stream is to confess that infrastructure is not only underground hardware. It is a public space decision with maintenance access, floodplain benches, shade, mosquito paranoia, and neighbors who will absolutely name the first fish.'
+												'To daylight a stream is to confess that infrastructure is not only underground hardware. It is a public-space decision with maintenance access, floodplain benches, shade, mosquito anxiety, and neighbors who will name the first fish before the ribbon-cutting podium has been packed away.'
 											)
 										),
 										paragraph(
 											t(
-												'A buried channel moves water quickly and invisibly. An open channel can add roughness, storage, and shade; it can also fail if the banks are decorative instead of hydraulic. The dream is not just pretty water. It is water that can '
+												'A buried channel moves water quickly and invisibly. An open channel can add roughness, storage, oxygen, and shade; it can also fail if the banks are decorative instead of hydraulic. The dream is not just pretty water. It is water that can '
 											),
 											t('cool the block', [bold()]),
 											t(
-												', survive a maintenance budget, teach the watershed, and still pass the next ugly storm.'
+												', survive a maintenance budget, teach the watershed, and still pass the next ugly storm without pretending the storm will be polite.'
+											)
+										),
+										paragraph(
+											t(
+												'The most convincing projects look less like a rescue fantasy and more like an operations manual with plants: room for a maintenance truck, room for sediment, room for the public to understand that the water was never gone.'
 											)
 										)
 									)
@@ -698,18 +713,30 @@ export const sampleZineRaw: unknown = {
 									doc: doc(
 										paragraph(
 											t(
-												'Try this after a safe, ordinary rainstorm. Bring a pencil, a zip bag for your phone, shoes you can forgive, and the correct amount of cowardice around moving water. Stay on public paths; do not pry, climb, taste, or heroic-narrative your way into a culvert.'
+												'Try this after a safe, ordinary rainstorm. Bring a pencil, a zip bag for your phone, shoes you can forgive, and the correct amount of caution around moving water. Stay on public paths; do not pry, climb, taste, or turn a culvert into a personal essay with emergency services.'
 											)
 										),
 										bulletList(
-											'Mark the exact rain start time. "After lunch" is vibes; t+12 minutes is data.',
+											'Mark the exact rain start time. "After lunch" is atmosphere; t+12 minutes is data.',
 											'Draw the curb cross-section: crown, gutter, ponding edge, inlet throat, leaf mat.',
 											'Record any inlet ID you can read from the sidewalk, but leave every lid exactly where the city put it.',
 											'Photograph the same spot at t+10 minutes, t+60 minutes, and t+24 hours.'
 										),
 										paragraph(
 											t(
-												'Then make the zine with the discipline of a tiny field report: one observation, one image, one motion, one question you cannot quite answer yet.'
+												'Then make the zine with the discipline of a tiny field report: one observation, one image, one motion, one question you cannot quite answer yet. Use official references when the numbers matter: the '
+											),
+											t('USGS Water Science School', [
+												link('https://www.usgs.gov/special-topics/water-science-school')
+											]),
+											t(' for rainfall volume, '),
+											t('EPA CSO basics', [
+												link('https://www.epa.gov/npdes/combined-sewer-overflow-basics')
+											]),
+											t(' for combined-sewer context, and '),
+											t('NOAA Atlas 14', [link('https://www.weather.gov/owp/hdsc')]),
+											t(
+												' when you want to know whether a storm was merely wet or statistically rude.'
 											)
 										)
 									)

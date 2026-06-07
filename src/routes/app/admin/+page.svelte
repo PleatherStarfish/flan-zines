@@ -45,29 +45,46 @@
 		gap: 0.2rem;
 		border: 2px solid var(--pixel-ink, hsl(var(--border)));
 		border-radius: var(--pixel-radius, 0.5rem);
-		background: hsl(var(--background));
+		background:
+			linear-gradient(var(--pixel-ink), var(--pixel-ink)) 0 0 / 100% 0.28rem no-repeat,
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px),
+			hsl(var(--background));
+		background-size:
+			100% 0.28rem,
+			12px 12px,
+			auto;
 		padding: 0.9rem 1rem;
 		text-decoration: none;
 		color: var(--pixel-ink, hsl(var(--foreground)));
-		box-shadow: 0.12rem 0.12rem 0 var(--pixel-ink, transparent);
+		box-shadow: var(--pixel-shadow-sm);
 	}
 	.card--link:hover {
-		background: var(--pixel-yellow, hsl(var(--muted)));
+		background:
+			linear-gradient(var(--pixel-ink), var(--pixel-ink)) 0 0 / 100% 0.28rem no-repeat,
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.07) 1px, transparent 1px),
+			var(--pixel-yellow, hsl(var(--muted)));
+		background-size:
+			100% 0.28rem,
+			12px 12px,
+			auto;
+		transform: translate(-2px, -2px);
 	}
 	.card--alert {
-		border-color: #b91c1c;
-		box-shadow: 0.12rem 0.12rem 0 #b91c1c;
+		border-color: var(--pixel-red);
+		box-shadow: 0.22rem 0.22rem 0 var(--pixel-red);
 	}
 	.card__value {
+		font-family: var(--pixel-font-ui);
 		font-size: 1.8rem;
 		font-weight: 950;
 		font-variant-numeric: tabular-nums;
 	}
 	.card__label {
+		font-family: var(--pixel-font-ui);
 		font-size: 0.78rem;
 		font-weight: 800;
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
+		letter-spacing: 0;
 		color: hsl(var(--muted-foreground));
 	}
 </style>

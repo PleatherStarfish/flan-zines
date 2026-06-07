@@ -127,7 +127,7 @@
 		font-size: 0.7rem;
 		font-weight: 900;
 		text-transform: uppercase;
-		letter-spacing: 0.08em;
+		letter-spacing: 0;
 		color: hsl(var(--muted-foreground));
 	}
 	.hint {

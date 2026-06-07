@@ -107,6 +107,14 @@
 		align-items: end;
 		justify-content: space-between;
 		gap: 1rem;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.06) 1px, transparent 1px),
+			oklch(0.94 0.032 83 / 0.92);
+		background-size: 12px 12px;
+		box-shadow: var(--pixel-shadow-sm);
+		padding: 1rem;
 	}
 	.zines-dashboard h1 {
 		margin: 0.15rem 0 0;
@@ -147,12 +155,18 @@
 		gap: 0.7rem;
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
-		background: oklch(0.97 0.02 82);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px),
+			oklch(0.97 0.02 82);
+		background-size: 10px 10px;
 		padding: 0.75rem;
-		box-shadow: 0.12rem 0.12rem 0 var(--pixel-ink);
+		box-shadow: var(--pixel-shadow-xs);
 	}
 	.template-choice:has(:checked) {
-		background: var(--pixel-green);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.08) 1px, transparent 1px), var(--pixel-green);
+		background-size: 10px 10px;
+		box-shadow: var(--pixel-shadow-sm);
 	}
 	.template-choice input {
 		margin-top: 0.2rem;
@@ -213,9 +227,16 @@
 		padding: 0.85rem 1rem;
 		color: inherit;
 		text-decoration: none;
+		transition:
+			transform 120ms steps(2, end),
+			background-color 120ms steps(2, end);
 	}
 	.zine-list__row:hover {
-		background: oklch(0.82 0.16 86 / 0.35);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.08) 1px, transparent 1px),
+			oklch(0.82 0.16 86 / 0.42);
+		background-size: 10px 10px;
+		transform: translate(-2px, -2px);
 	}
 	.zine-list__row p {
 		margin: 0;

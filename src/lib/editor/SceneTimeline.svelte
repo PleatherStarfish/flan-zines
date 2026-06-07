@@ -36,12 +36,6 @@
 		if (isPathElement(element)) onEditPath?.(element.id);
 	}
 
-	const tracks: ElementTrack[] = ['content', 'media', 'background'];
-	const trackLabels: Record<ElementTrack, string> = {
-		content: 'Words',
-		media: 'Pictures',
-		background: 'Backdrop'
-	};
 	const timelineBlockLabels: Record<string, string> = {
 		heading: 'Title',
 		richText: 'Words',
@@ -69,6 +63,8 @@
 	} | null>(null);
 	let beatDrag = $state<{ beatId: string; originAt: number; originX: number } | null>(null);
 	let scrubbing = $state(false);
+	let draggingElementId = $state<string | null>(null);
+	let elementDrop = $state<{ elementId: string; position: 'before' | 'after' } | null>(null);
 	let rampDrag = $state<{
 		elementId: string;
 		slot: 'enter' | 'exit';
@@ -105,11 +101,9 @@
 		}))
 	);
 
-	// One channel per element (DAW-style). Grouped by track so related clips cluster, but
-	// every clip gets its own legible row — so you can see and add an arbitrary number.
-	const lanes = $derived(
-		tracks.flatMap((track) => scene.elements.filter((element) => element.track === track))
-	);
+	// One channel per element. The first row renders on top; the last row renders on bottom.
+	const lanes = $derived(scene.elements);
+	const laneCount = $derived(lanes.length);
 
 	function addClip(type: string, track: ElementTrack): void {
 		store.addElementAt(scene.id, type, track, scrub);
@@ -350,11 +344,91 @@
 		}
 		if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
 			event.preventDefault();
-			store.updateElementTrack(
-				element.id,
-				nearbyTrack(element.track, event.key === 'ArrowUp' ? -1 : 1)
-			);
+			moveElementRow(element.id, event.key === 'ArrowUp' ? -1 : 1);
 		}
+	}
+
+	function depthLabel(index: number): string {
+		if (laneCount === 1) return 'Only track';
+		if (index === 0) return 'Shows on top';
+		if (index === laneCount - 1) return 'Shows on bottom';
+		return `Track ${index + 1}`;
+	}
+
+	function moveElementRow(elementId: string, delta: number): void {
+		const index = lanes.findIndex((element) => element.id === elementId);
+		if (index < 0) return;
+		const target = clamp(index + delta, 0, lanes.length - 1);
+		if (target === index) return;
+		store.moveElementNear(elementId, lanes[target].id, delta < 0 ? 'before' : 'after');
+	}
+
+	function reorderElementRow(
+		movingElementId: string,
+		targetElementId: string,
+		position: 'before' | 'after'
+	): void {
+		if (movingElementId === targetElementId) return;
+		store.moveElementNear(movingElementId, targetElementId, position);
+	}
+
+	function dropPosition(event: PointerEvent, target: HTMLElement): 'before' | 'after' {
+		const rect = target.getBoundingClientRect();
+		return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+	}
+
+	function laneAtPointer(event: PointerEvent): HTMLElement | null {
+		const hit = globalThis.document.elementFromPoint(event.clientX, event.clientY);
+		const lane =
+			hit instanceof globalThis.Element ? hit.closest<HTMLElement>('.lane[data-element-id]') : null;
+		if (!lane || lane.dataset.elementId === draggingElementId) return null;
+		return lane;
+	}
+
+	function beginElementRowDrag(event: PointerEvent, element: Element): void {
+		event.preventDefault();
+		event.stopPropagation();
+		store.select(element.id);
+		draggingElementId = element.id;
+		elementDrop = null;
+		(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+		window.addEventListener('pointermove', onElementRowPointerMove);
+		window.addEventListener('pointerup', finishElementRowDrag, { once: true });
+		window.addEventListener('pointercancel', cancelElementRowDrag, { once: true });
+	}
+
+	function onElementRowPointerMove(event: PointerEvent): void {
+		if (!draggingElementId) return;
+		const lane = laneAtPointer(event);
+		if (!lane?.dataset.elementId) {
+			elementDrop = null;
+			return;
+		}
+		elementDrop = {
+			elementId: lane.dataset.elementId,
+			position: dropPosition(event, lane)
+		};
+	}
+
+	function finishElementRowDrag(): void {
+		if (draggingElementId && elementDrop) {
+			reorderElementRow(draggingElementId, elementDrop.elementId, elementDrop.position);
+		}
+		cancelElementRowDrag();
+	}
+
+	function cancelElementRowDrag(): void {
+		draggingElementId = null;
+		elementDrop = null;
+		window.removeEventListener('pointermove', onElementRowPointerMove);
+		window.removeEventListener('pointerup', finishElementRowDrag);
+		window.removeEventListener('pointercancel', cancelElementRowDrag);
+	}
+
+	function keyElementRow(event: KeyboardEvent, element: Element): void {
+		if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+		event.preventDefault();
+		moveElementRow(element.id, event.key === 'ArrowUp' ? -1 : 1);
 	}
 
 	function keyBeat(event: KeyboardEvent, beat: Beat): void {
@@ -363,11 +437,6 @@
 		const step = event.shiftKey ? 0.08 : 0.02;
 		const dir = event.key === 'ArrowLeft' ? -step : step;
 		store.updateBeat(scene.id, beat.id, { at: round(clamp(beat.at + dir, 0, 1)) });
-	}
-
-	function nearbyTrack(track: ElementTrack, delta: number): ElementTrack {
-		const index = tracks.indexOf(track);
-		return tracks[clamp(index + delta, 0, tracks.length - 1)];
 	}
 
 	function clamp(value: number, min: number, max: number): number {
@@ -383,6 +452,7 @@
 		window.removeEventListener('pointermove', onBeatPointerMove);
 		window.removeEventListener('pointermove', setScrubFromPointer);
 		window.removeEventListener('pointermove', onRampMove);
+		cancelElementRowDrag();
 	});
 </script>
 
@@ -456,7 +526,7 @@
 				</div>
 			</div>
 
-			{#if lanes.length === 0}
+			{#if laneCount === 0}
 				<div class="timeline-empty">
 					<p>
 						No clips yet. Add a <strong>Title</strong> or <strong>Picture</strong> above, then tap it
@@ -465,31 +535,52 @@
 				</div>
 			{:else}
 				<div class="timeline-lanes">
-					{#each lanes as element (element.id)}
+					{#each lanes as element, index (element.id)}
 						{@const range = rangeFor(element)}
 						{@const chips = effectChips(element)}
 						{@const selected = store.selectedId === element.id}
-						<div class="lane" data-track={element.track} class:is-selected={selected}>
-							<button
-								type="button"
-								class="lane__head"
-								aria-pressed={selected}
-								onclick={() => store.select(element.id)}
-							>
-								<span class="lane__tag">{trackLabels[element.track]}</span>
-								<span class="lane__name">{elementLabel(element)}</span>
-								<span class="lane__fx">
-									{#if chips.length}
-										{#each chips as chip (chip.slot)}
-											<span class="lane__chip" title={`${chip.slot}: ${chip.label}`}>
-												<span aria-hidden="true">{chip.icon}</span>{chip.label}
-											</span>
-										{/each}
-									{:else}
-										<span class="lane__chip lane__chip--empty">Tap to add an effect</span>
-									{/if}
-								</span>
-							</button>
+						<div
+							class="lane"
+							data-track={element.track}
+							data-element-id={element.id}
+							class:is-selected={selected}
+							class:is-dragging={draggingElementId === element.id}
+							class:is-drop-before={elementDrop?.elementId === element.id &&
+								elementDrop.position === 'before'}
+							class:is-drop-after={elementDrop?.elementId === element.id &&
+								elementDrop.position === 'after'}
+						>
+							<div class="lane__head">
+								<button
+									type="button"
+									class="lane__grab"
+									aria-label={`Move ${elementLabel(element)} track (${depthLabel(index)})`}
+									onpointerdown={(event) => beginElementRowDrag(event, element)}
+									onkeydown={(event) => keyElementRow(event, element)}
+								>
+									<span aria-hidden="true"></span>
+								</button>
+								<button
+									type="button"
+									class="lane__summary"
+									aria-pressed={selected}
+									onclick={() => store.select(element.id)}
+								>
+									<span class="lane__name">{elementLabel(element)}</span>
+									<span class="lane__fx">
+										{#if chips.length}
+											{#each chips as chip (chip.slot)}
+												<span class="lane__chip" title={`${chip.slot}: ${chip.label}`}>
+													<span aria-hidden="true">{chip.icon}</span>{chip.label}
+												</span>
+											{/each}
+										{:else}
+											<span class="lane__chip lane__chip--empty">Tap to add an effect</span>
+										{/if}
+									</span>
+								</button>
+								<span class="lane__depth">{depthLabel(index)}</span>
+							</div>
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div class="lane__track" onpointerdown={beginScrub}>
 								<div class="playhead" style:left={`${scrub * 100}%`}></div>
@@ -570,7 +661,9 @@
 	.timeline-panel {
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
-		background: oklch(0.97 0.02 82);
+		background:
+			linear-gradient(var(--pixel-ink), var(--pixel-ink)) 0 0 / 100% 0.3rem no-repeat,
+			oklch(0.97 0.02 82);
 		box-shadow: var(--pixel-shadow-sm);
 	}
 	.preview-panel {
@@ -646,6 +739,7 @@
 		padding: 0.7rem 1rem 0.4rem;
 	}
 	.scrubber span {
+		font-family: var(--pixel-font-ui);
 		font-size: 0.78rem;
 		font-weight: 750;
 		color: hsl(var(--muted-foreground));
@@ -655,6 +749,7 @@
 		accent-color: hsl(var(--primary));
 	}
 	.scrubber output {
+		font-family: var(--pixel-font-ui);
 		font-size: 0.78rem;
 		font-weight: 760;
 		font-variant-numeric: tabular-nums;
@@ -685,9 +780,10 @@
 	}
 	.timeline-toolbar__label {
 		margin-right: 0.15rem;
+		font-family: var(--pixel-font-ui);
 		font-size: 0.72rem;
 		font-weight: 760;
-		letter-spacing: 0.06em;
+		letter-spacing: 0;
 		text-transform: uppercase;
 		color: hsl(var(--muted-foreground));
 	}
@@ -695,11 +791,13 @@
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
 		background: oklch(0.97 0.02 82);
-		box-shadow: 0.1rem 0.1rem 0 var(--pixel-ink);
+		box-shadow: var(--pixel-shadow-xs);
 		color: hsl(var(--foreground));
 		padding: 0.4rem 0.7rem;
+		font-family: var(--pixel-font-ui);
 		font-size: 0.84rem;
 		font-weight: 850;
+		text-transform: uppercase;
 	}
 	.timeline-toolbar .moment-button {
 		margin-left: auto;
@@ -725,9 +823,10 @@
 		align-items: center;
 		border-right: 2px solid var(--pixel-ink);
 		padding: 0 0.75rem;
+		font-family: var(--pixel-font-ui);
 		font-size: 0.72rem;
 		font-weight: 760;
-		letter-spacing: 0.04em;
+		letter-spacing: 0;
 		text-transform: uppercase;
 		color: hsl(var(--muted-foreground));
 	}
@@ -749,6 +848,7 @@
 		position: absolute;
 		bottom: 0.2rem;
 		transform: translateX(-50%);
+		font-family: var(--pixel-font-ui);
 		font-size: 0.64rem;
 		font-weight: 750;
 		font-variant-numeric: tabular-nums;
@@ -802,6 +902,7 @@
 		font-size: 0.9rem;
 	}
 	.lane {
+		position: relative;
 		display: grid;
 		grid-template-columns: var(--gutter) minmax(0, 1fr);
 		align-items: stretch;
@@ -821,51 +922,112 @@
 	.lane.is-selected {
 		background: hsl(var(--lane-accent) / 0.07);
 	}
+	.lane::before,
+	.lane::after {
+		content: '';
+		position: absolute;
+		right: 0;
+		left: 0;
+		z-index: 8;
+		height: 0.2rem;
+		background: var(--pixel-cyan);
+		box-shadow: 0 0 0 2px var(--pixel-ink);
+		opacity: 0;
+		pointer-events: none;
+	}
+	.lane::before {
+		top: 0;
+	}
+	.lane::after {
+		bottom: 0;
+	}
+	.lane.is-drop-before::before,
+	.lane.is-drop-after::after {
+		opacity: 1;
+	}
+	.lane.is-dragging {
+		opacity: 0.64;
+	}
 	.lane__head {
 		display: grid;
 		grid-template-columns: max-content minmax(0, 1fr);
-		grid-template-rows: auto auto;
 		align-content: center;
-		gap: 0.1rem 0.5rem;
+		gap: 0.35rem;
 		border: 0;
 		border-right: 2px solid var(--pixel-ink);
 		background: hsl(var(--lane-accent) / 0.1);
 		padding: 0.5rem 0.6rem;
 		text-align: left;
+	}
+	.lane__grab {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 1.15rem;
+		height: 1.5rem;
+		margin-left: -0.2rem;
+		border: 0;
+		border-radius: 0.18rem;
+		background: transparent;
+		box-shadow: none;
+		cursor: grab;
+		opacity: 0.58;
+		touch-action: none;
+	}
+	.lane__grab::before {
+		content: '';
+		position: absolute;
+		inset: -0.35rem -0.25rem;
+	}
+	.lane__grab:hover {
+		background: hsl(var(--lane-accent) / 0.14);
+		opacity: 1;
+	}
+	.lane__grab:active {
+		cursor: grabbing;
+	}
+	.lane__grab span {
+		width: 0.54rem;
+		height: 1rem;
+		background-image: radial-gradient(circle, var(--pixel-ink) 0 1px, transparent 1.15px);
+		background-position:
+			0 0,
+			0.27rem 0.18rem;
+		background-size: 0.27rem 0.34rem;
+	}
+	.lane__summary {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0.18rem;
+		min-width: 0;
+		border: 0;
+		background: transparent;
+		color: hsl(var(--foreground));
+		padding: 0;
+		text-align: left;
 		cursor: pointer;
+	}
+	.lane__summary:hover {
+		color: hsl(var(--lane-accent));
+	}
+	.lane__summary[aria-pressed='true'] {
+		color: hsl(var(--foreground));
 	}
 	.lane__head:hover {
 		background: hsl(var(--lane-accent) / 0.08);
 	}
-	.lane__head[aria-pressed='true'] {
+	.lane.is-selected .lane__head {
 		background: hsl(var(--lane-accent) / 0.12);
 	}
-	.lane__tag {
-		grid-row: 1;
-		align-self: center;
-		border: 1px solid hsl(var(--lane-accent) / 0.55);
-		border-radius: var(--pixel-radius);
-		background: hsl(var(--lane-accent) / 0.18);
-		padding: 0.08rem 0.4rem;
-		font-size: 0.66rem;
-		font-weight: 760;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-		color: hsl(var(--lane-accent));
-	}
 	.lane__name {
-		grid-row: 1;
-		align-self: center;
 		overflow: hidden;
+		font-family: var(--pixel-font-ui);
 		font-size: 0.84rem;
 		font-weight: 740;
 		white-space: nowrap;
 		text-overflow: ellipsis;
-		color: hsl(var(--foreground));
 	}
 	.lane__fx {
-		grid-row: 2;
-		grid-column: 1 / -1;
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.25rem;
@@ -878,6 +1040,7 @@
 		border-radius: var(--pixel-radius);
 		background: oklch(0.92 0.035 84);
 		padding: 0.05rem 0.34rem;
+		font-family: var(--pixel-font-ui);
 		font-size: 0.68rem;
 		font-weight: 700;
 		color: hsl(var(--foreground));
@@ -887,6 +1050,19 @@
 		font-weight: 600;
 		font-style: italic;
 		color: hsl(var(--muted-foreground));
+	}
+	.lane__depth {
+		grid-column: 1 / -1;
+		width: max-content;
+		border: 1px solid hsl(var(--lane-accent) / 0.55);
+		border-radius: var(--pixel-radius);
+		background: hsl(var(--lane-accent) / 0.14);
+		color: hsl(var(--foreground));
+		padding: 0.08rem 0.36rem;
+		font-family: var(--pixel-font-ui);
+		font-size: 0.62rem;
+		font-weight: 760;
+		text-transform: uppercase;
 	}
 	.lane__track {
 		position: relative;
@@ -909,7 +1085,7 @@
 		border-radius: var(--pixel-radius);
 		background: hsl(var(--lane-accent));
 		color: hsl(var(--primary-foreground));
-		box-shadow: 0.12rem 0.12rem 0 var(--pixel-ink);
+		box-shadow: var(--pixel-shadow-xs);
 	}
 	.clip.is-selected {
 		box-shadow:
@@ -936,6 +1112,7 @@
 	}
 	.clip__body > span:first-child {
 		overflow: hidden;
+		font-family: var(--pixel-font-ui);
 		font-size: 0.78rem;
 		font-weight: 760;
 		white-space: nowrap;
@@ -943,6 +1120,7 @@
 	}
 	.clip__fx {
 		overflow: hidden;
+		font-family: var(--pixel-font-ui);
 		font-size: 0.66rem;
 		font-weight: 600;
 		white-space: nowrap;
@@ -1010,6 +1188,7 @@
 	}
 	.clip button:focus-visible,
 	.clip__ramp:focus-visible,
+	.lane__grab:focus-visible,
 	.lane__head:focus-visible {
 		outline: 2px solid hsl(var(--primary));
 		outline-offset: 2px;

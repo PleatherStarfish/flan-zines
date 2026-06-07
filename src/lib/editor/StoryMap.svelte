@@ -268,14 +268,19 @@
 		justify-content: space-between;
 		gap: 1rem;
 		border-bottom: 2px solid var(--pixel-ink);
-		background: oklch(0.92 0.035 84 / 0.96);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.08) 1px, transparent 1px),
+			linear-gradient(0deg, oklch(0.24 0.065 281 / 0.06) 1px, transparent 1px),
+			oklch(0.92 0.035 84 / 0.97);
+		background-size: 12px 12px;
+		box-shadow: 0 0.18rem 0 oklch(0.24 0.065 281 / 0.16);
 		padding: 1rem 1.5rem;
 	}
 	.story-map__eyebrow {
 		margin: 0 0 0.1rem;
 		font-size: 0.72rem;
 		font-weight: 700;
-		letter-spacing: 0.08em;
+		letter-spacing: 0;
 		text-transform: uppercase;
 		color: hsl(var(--muted-foreground));
 	}
@@ -299,9 +304,11 @@
 	.scene-card__controls button,
 	.add-card,
 	.scene-choices button {
-		border-radius: 0.5rem;
+		border-radius: var(--pixel-radius);
+		font-family: var(--pixel-font-ui);
 		font-size: 0.88rem;
 		font-weight: 850;
+		text-transform: uppercase;
 	}
 	.primary-button {
 		border: 2px solid var(--pixel-ink);
@@ -352,7 +359,11 @@
 	.chapter-band {
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
-		background: oklch(0.94 0.032 83 / 0.82);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.055) 1px, transparent 1px),
+			linear-gradient(0deg, oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px),
+			oklch(0.94 0.032 83 / 0.88);
+		background-size: 14px 14px;
 		box-shadow: var(--pixel-shadow-sm);
 		padding: 1rem;
 	}
@@ -370,7 +381,7 @@
 	.chapter-title span {
 		font-size: 0.72rem;
 		font-weight: 750;
-		letter-spacing: 0.08em;
+		letter-spacing: 0;
 		text-transform: uppercase;
 		color: hsl(var(--muted-foreground));
 	}
@@ -419,8 +430,18 @@
 		overflow: hidden;
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
-		background: oklch(0.97 0.02 82);
+		background:
+			linear-gradient(var(--pixel-ink), var(--pixel-ink)) 0 0 / 100% 0.34rem no-repeat,
+			linear-gradient(
+					90deg,
+					var(--pixel-magenta) 0 33%,
+					var(--pixel-green) 33% 66%,
+					var(--pixel-cyan) 66%
+				)
+				0 0.34rem / 100% 0.18rem no-repeat,
+			oklch(0.97 0.02 82);
 		box-shadow: var(--pixel-shadow-sm);
+		image-rendering: pixelated;
 	}
 	.scene-card.is-selected {
 		background: oklch(0.86 0.09 196);
@@ -429,7 +450,7 @@
 			var(--pixel-shadow-sm);
 	}
 	.scene-card__body {
-		padding: 0.8rem;
+		padding: 0.95rem 0.8rem 0.8rem;
 	}
 	.scene-card__meta {
 		display: flex;
@@ -455,7 +476,7 @@
 		position: relative;
 		margin-top: 0.75rem;
 		height: 0.45rem;
-		border-radius: 999px;
+		border-radius: var(--pixel-radius);
 		border: 1px solid var(--pixel-ink);
 		background: oklch(0.88 0.04 80);
 	}
@@ -499,7 +520,11 @@
 		min-height: 14rem;
 		border: 2px dashed var(--pixel-ink);
 		border-radius: var(--pixel-radius);
-		background: oklch(0.94 0.032 83 / 0.5);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.06) 1px, transparent 1px),
+			linear-gradient(0deg, oklch(0.24 0.065 281 / 0.05) 1px, transparent 1px),
+			oklch(0.94 0.032 83 / 0.58);
+		background-size: 12px 12px;
 		color: hsl(var(--muted-foreground));
 		box-shadow: none;
 	}

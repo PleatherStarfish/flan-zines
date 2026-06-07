@@ -144,11 +144,21 @@
 		align-items: end;
 		justify-content: space-between;
 		gap: 0.75rem 1rem;
+		border: 2px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.06) 1px, transparent 1px),
+			oklch(0.94 0.032 83 / 0.92);
+		background-size: 12px 12px;
+		box-shadow: var(--pixel-shadow-sm);
+		padding: 1rem;
 	}
 	.classroom__head h1 {
 		margin: 0;
+		font-family: var(--pixel-font-ui);
 		font-size: 1.4rem;
 		font-weight: 950;
+		text-shadow: 0.08rem 0.08rem 0 var(--pixel-yellow);
 	}
 	.classroom__head p {
 		margin: 0.2rem 0 0;
@@ -160,15 +170,18 @@
 	}
 	.banner {
 		margin: 0;
-		border: 2px solid #b91c1c;
+		border: 2px solid var(--pixel-red);
 		border-radius: var(--pixel-radius, 0.4rem);
+		background:
+			linear-gradient(90deg, oklch(0.56 0.18 28 / 0.1) 1px, transparent 1px), oklch(0.97 0.02 82);
+		background-size: 10px 10px;
 		padding: 0.5rem 0.7rem;
 		font-weight: 700;
-		color: #b91c1c;
+		color: var(--pixel-red);
 	}
 	.banner--ok {
-		border-color: #166534;
-		color: #166534;
+		border-color: var(--pixel-green);
+		color: oklch(0.34 0.12 151);
 	}
 	.class-form {
 		display: grid;
@@ -177,7 +190,11 @@
 		gap: 0.65rem;
 		border: 2px solid var(--pixel-ink, hsl(var(--border)));
 		border-radius: var(--pixel-radius, 0.5rem);
-		background: hsl(var(--background));
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px),
+			hsl(var(--background));
+		background-size: 12px 12px;
+		box-shadow: var(--pixel-shadow-xs);
 		padding: 0.85rem 1rem;
 	}
 	.class-form label {
@@ -200,11 +217,13 @@
 		align-items: center;
 		gap: 0.5rem;
 		margin: 0 0 0.5rem;
+		font-family: var(--pixel-font-ui);
 		font-size: 1.05rem;
 		font-weight: 900;
 	}
 	.count {
-		border-radius: 999px;
+		border: 1px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
 		background: var(--pixel-yellow, hsl(var(--muted)));
 		padding: 0 0.5rem;
 		font-size: 0.76rem;
@@ -218,7 +237,15 @@
 	.reports {
 		border: 2px solid var(--pixel-ink, hsl(var(--border)));
 		border-radius: var(--pixel-radius, 0.5rem);
-		background: hsl(var(--background));
+		background:
+			linear-gradient(var(--pixel-ink), var(--pixel-ink)) 0 0 / 100% 0.28rem no-repeat,
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px),
+			hsl(var(--background));
+		background-size:
+			100% 0.28rem,
+			12px 12px,
+			auto;
+		box-shadow: var(--pixel-shadow-sm);
 		padding: 0.85rem 1rem;
 	}
 	.class__head {
@@ -237,7 +264,7 @@
 	.join-code strong {
 		color: hsl(var(--foreground));
 		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-		letter-spacing: 0.08em;
+		letter-spacing: 0;
 	}
 	.roster,
 	.queue,
@@ -269,12 +296,14 @@
 		font-weight: 850;
 	}
 	.pill {
-		border-radius: 999px;
-		background: #fde68a;
+		border: 1px solid var(--pixel-ink);
+		border-radius: var(--pixel-radius);
+		background: var(--pixel-yellow);
 		padding: 0 0.5rem;
+		font-family: var(--pixel-font-ui);
 		font-size: 0.72rem;
 		font-weight: 800;
-		color: #92400e;
+		color: var(--pixel-ink);
 	}
 	.zines {
 		display: grid;
@@ -296,8 +325,12 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.5rem;
+		border: 1px dashed var(--pixel-ink);
 		border-radius: var(--pixel-radius, 0.4rem);
-		background: hsl(var(--muted) / 0.4);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.05) 1px, transparent 1px),
+			hsl(var(--muted) / 0.45);
+		background-size: 10px 10px;
 		padding: 0.4rem 0.6rem;
 	}
 	.asset__label {
@@ -312,6 +345,8 @@
 		gap: 0.5rem;
 		border: 2px solid var(--pixel-ink, hsl(var(--border)));
 		border-radius: var(--pixel-radius, 0.4rem);
+		background: oklch(0.97 0.02 82);
+		box-shadow: var(--pixel-shadow-xs);
 		padding: 0.5rem 0.65rem;
 	}
 	.item__reason {
@@ -327,9 +362,12 @@
 		border: 2px solid var(--pixel-ink, hsl(var(--border)));
 		border-radius: var(--pixel-radius, 0.35rem);
 		background: var(--pixel-yellow, hsl(var(--muted)));
+		box-shadow: var(--pixel-shadow-xs);
 		padding: 0.3rem 0.6rem;
+		font-family: var(--pixel-font-ui);
 		font-size: 0.8rem;
 		font-weight: 800;
+		text-transform: uppercase;
 		cursor: pointer;
 	}
 	.item__actions button.ghost {

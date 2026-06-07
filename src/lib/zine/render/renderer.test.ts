@@ -134,6 +134,69 @@ describe('ZineRenderer', () => {
 		expect(inStyle).toMatch(/opacity:\s*1\b/);
 	});
 
+	it('applies element row order as front-to-back z-index', () => {
+		const document = parseDocument({
+			schemaVersion: 5,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'reveal',
+							length: 'auto',
+							beats: [{ id: 'b', at: 0 }],
+							elements: [
+								{
+									id: 'scenery',
+									track: 'background',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'scenery_blk',
+										type: 'heading',
+										props: { text: 'Scenery', level: 2 }
+									}
+								},
+								{
+									id: 'picture',
+									track: 'media',
+									placement: 'free',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'picture_blk',
+										type: 'image',
+										props: { src: '/picture.svg', alt: 'picture' }
+									}
+								},
+								{
+									id: 'words',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: { id: 'words_blk', type: 'heading', props: { text: 'Words', level: 2 } }
+								}
+							]
+						}
+					]
+				}
+			]
+		}) satisfies ZineDocument;
+
+		const { container, unmount } = render(ZineRenderer, {
+			props: { document, sceneProgress: { scn: 0 } }
+		});
+
+		expect(
+			container.querySelector('.zine-flow-actor[data-track="background"]')?.getAttribute('style')
+		).toMatch(/z-index:\s*3/);
+		expect(
+			container.querySelector('.zine-free-actor[data-track="media"]')?.getAttribute('style')
+		).toMatch(/z-index:\s*2/);
+		expect(
+			container.querySelector('.zine-flow-actor[data-track="content"]')?.getAttribute('style')
+		).toMatch(/z-index:\s*1/);
+		unmount();
+	});
+
 	it('renders text blocks transparent by default, with explicit tight readability backdrops', () => {
 		const document = parseDocument({
 			schemaVersion: 5,

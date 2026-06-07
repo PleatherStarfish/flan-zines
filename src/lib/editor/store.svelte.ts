@@ -491,6 +491,24 @@ export class EditorStore {
 			if (found) move(found.scene.elements, (element) => element.id === elementId, dir);
 		});
 	}
+	moveElementNear(elementId: string, targetElementId: string, position: 'before' | 'after'): void {
+		if (elementId === targetElementId) return;
+		this.mutate((draft) => {
+			const movingFound = findElement(draft, elementId);
+			const targetFound = findElement(draft, targetElementId);
+			if (!movingFound || !targetFound || movingFound.scene.id !== targetFound.scene.id) return;
+			const elements = movingFound.scene.elements;
+			const from = elements.findIndex((element) => element.id === elementId);
+			if (from < 0) return;
+			const [moving] = elements.splice(from, 1);
+			const target = elements.findIndex((element) => element.id === targetElementId);
+			if (target < 0) {
+				elements.splice(from, 0, moving);
+				return;
+			}
+			elements.splice(position === 'before' ? target : target + 1, 0, moving);
+		});
+	}
 	removeElement(elementId: string): void {
 		this.mutate((draft) => {
 			for (const act of draft.acts) {

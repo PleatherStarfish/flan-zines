@@ -1,3 +1,6 @@
+@import '@fontsource/space-mono/400.css';
+@import '@fontsource/space-mono/700.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,9 +10,9 @@
    The app chrome uses a "Pixel Press" theme: photocopied paper, inky outlines,
    and small arcade accents. The authored zine renderer still owns its own theme. */
 :root {
-	--background: 42 54% 91%;
+	--background: 222 45% 91%;
 	--foreground: 246 32% 18%;
-	--muted: 39 49% 83%;
+	--muted: 221 28% 84%;
 	--muted-foreground: 246 18% 39%;
 	--primary: 325 70% 45%;
 	--primary-foreground: 42 60% 94%;
@@ -20,15 +23,23 @@
 	--destructive-foreground: 42 60% 94%;
 	--pixel-paper: oklch(0.92 0.035 84);
 	--pixel-paper-deep: oklch(0.84 0.047 76);
+	--pixel-backdrop: oklch(0.88 0.04 243);
+	--pixel-backdrop-deep: oklch(0.77 0.06 250);
 	--pixel-ink: oklch(0.24 0.065 281);
 	--pixel-ink-soft: oklch(0.42 0.045 281);
 	--pixel-magenta: oklch(0.55 0.19 339);
 	--pixel-green: oklch(0.68 0.16 151);
 	--pixel-cyan: oklch(0.67 0.15 200);
 	--pixel-yellow: oklch(0.82 0.16 86);
-	--pixel-shadow: 0.34rem 0.34rem 0 var(--pixel-ink);
-	--pixel-shadow-sm: 0.18rem 0.18rem 0 var(--pixel-ink);
-	--pixel-radius: 0.18rem;
+	--pixel-red: oklch(0.56 0.18 28);
+	--pixel-shadow: 0.42rem 0.42rem 0 var(--pixel-ink);
+	--pixel-shadow-sm: 0.22rem 0.22rem 0 var(--pixel-ink);
+	--pixel-shadow-xs: 0.12rem 0.12rem 0 var(--pixel-ink);
+	--pixel-radius: 0.08rem;
+	--pixel-grid: 16px;
+	--pixel-font-ui:
+		'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+		monospace;
 }
 
 /* Apply the theme tokens to the page canvas so the background/text are explicit
@@ -41,14 +52,22 @@
 	body {
 		min-height: 100vh;
 		background:
-			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px),
-			linear-gradient(oklch(0.24 0.065 281 / 0.04) 1px, transparent 1px),
-			radial-gradient(circle at 1px 1px, oklch(0.24 0.065 281 / 0.14) 1px, transparent 0),
-			var(--pixel-paper);
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.07) 1px, transparent 1px),
+			linear-gradient(oklch(0.24 0.065 281 / 0.055) 1px, transparent 1px),
+			radial-gradient(circle at 1px 1px, oklch(0.24 0.065 281 / 0.16) 1px, transparent 0),
+			linear-gradient(
+				135deg,
+				oklch(0.67 0.15 200 / 0.12) 0 25%,
+				transparent 25% 50%,
+				oklch(0.55 0.19 339 / 0.08) 50% 75%,
+				transparent 75% 100%
+			),
+			var(--pixel-backdrop);
 		background-size:
-			28px 28px,
-			28px 28px,
-			7px 7px,
+			var(--pixel-grid) var(--pixel-grid),
+			var(--pixel-grid) var(--pixel-grid),
+			8px 8px,
+			32px 32px,
 			auto;
 		color: hsl(var(--foreground));
 		font-family:
@@ -58,6 +77,17 @@
 			BlinkMacSystemFont,
 			'Segoe UI',
 			sans-serif;
+	}
+	body::before {
+		content: '';
+		position: fixed;
+		inset: 0;
+		z-index: -1;
+		background:
+			linear-gradient(90deg, transparent 0 15px, oklch(0.24 0.065 281 / 0.035) 15px 16px),
+			linear-gradient(transparent 0 15px, oklch(0.24 0.065 281 / 0.035) 15px 16px);
+		background-size: 64px 64px;
+		pointer-events: none;
 	}
 	button,
 	input,
@@ -75,12 +105,12 @@
 	}
 	button {
 		transition:
-			transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
-			box-shadow 160ms cubic-bezier(0.22, 1, 0.36, 1),
-			background-color 160ms cubic-bezier(0.22, 1, 0.36, 1);
+			transform 120ms steps(2, end),
+			box-shadow 120ms steps(2, end),
+			background-color 120ms steps(2, end);
 	}
 	button:not(:disabled):active {
-		transform: translate(2px, 2px);
+		transform: translate(3px, 3px);
 	}
 	button:disabled {
 		cursor: not-allowed;
@@ -96,35 +126,89 @@
 	.pixel-shell {
 		min-height: 100vh;
 		background:
-			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.055) 1px, transparent 1px),
-			linear-gradient(oklch(0.24 0.065 281 / 0.045) 1px, transparent 1px), var(--pixel-paper);
-		background-size: 32px 32px;
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.08) 1px, transparent 1px),
+			linear-gradient(oklch(0.24 0.065 281 / 0.06) 1px, transparent 1px),
+			linear-gradient(
+				45deg,
+				transparent 0 47%,
+				oklch(0.24 0.065 281 / 0.04) 47% 53%,
+				transparent 53%
+			),
+			linear-gradient(
+				135deg,
+				oklch(0.67 0.15 200 / 0.16) 0 25%,
+				transparent 25% 50%,
+				oklch(0.55 0.19 339 / 0.1) 50% 75%,
+				transparent 75% 100%
+			),
+			var(--pixel-backdrop);
+		background-size:
+			24px 24px,
+			24px 24px,
+			48px 48px,
+			96px 96px,
+			auto;
 		color: hsl(var(--foreground));
 	}
+	.pixel-shell::selection {
+		background: var(--pixel-magenta);
+		color: hsl(var(--primary-foreground));
+	}
 	.pixel-panel {
+		position: relative;
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
 		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.05) 1px, transparent 1px),
+			linear-gradient(0deg, oklch(0.24 0.065 281 / 0.04) 1px, transparent 1px),
 			linear-gradient(135deg, oklch(0.98 0.018 82 / 0.92), oklch(0.88 0.038 78 / 0.92)),
 			var(--pixel-paper);
+		background-size:
+			12px 12px,
+			12px 12px,
+			auto,
+			auto;
 		box-shadow: var(--pixel-shadow);
 	}
 	.pixel-panel-soft {
-		border: 2px solid oklch(0.24 0.065 281 / 0.55);
+		position: relative;
+		border: 2px solid oklch(0.24 0.065 281 / 0.72);
 		border-radius: var(--pixel-radius);
-		background: oklch(0.94 0.032 83 / 0.82);
+		background:
+			linear-gradient(90deg, oklch(0.24 0.065 281 / 0.04) 1px, transparent 1px),
+			linear-gradient(0deg, oklch(0.24 0.065 281 / 0.035) 1px, transparent 1px),
+			oklch(0.94 0.032 83 / 0.9);
+		background-size:
+			12px 12px,
+			12px 12px,
+			auto;
 		box-shadow: var(--pixel-shadow-sm);
+	}
+	.pixel-panel::before,
+	.pixel-panel-soft::before {
+		content: '';
+		position: absolute;
+		inset: 0.32rem;
+		border-top: 0.28rem solid var(--pixel-cyan);
+		border-left: 0.28rem solid var(--pixel-magenta);
+		clip-path: polygon(0 0, 1.2rem 0, 1.2rem 0.28rem, 0.28rem 0.28rem, 0.28rem 1.2rem, 0 1.2rem);
+		opacity: 0.9;
+		pointer-events: none;
 	}
 	.pixel-button {
 		border: 2px solid var(--pixel-ink);
 		border-radius: var(--pixel-radius);
 		background: var(--pixel-paper);
-		box-shadow: 0.16rem 0.16rem 0 var(--pixel-ink);
+		box-shadow: var(--pixel-shadow-xs);
 		color: var(--pixel-ink);
+		font-family: var(--pixel-font-ui);
 		font-weight: 800;
+		text-transform: uppercase;
 	}
 	.pixel-button:hover {
 		background: var(--pixel-yellow);
+		transform: translate(-1px, -1px);
+		box-shadow: var(--pixel-shadow-sm);
 	}
 	.pixel-button:disabled {
 		box-shadow: none;
@@ -154,8 +238,9 @@
 		border-radius: var(--pixel-radius);
 		background: var(--pixel-yellow);
 		padding: 0.12rem 0.42rem;
-		box-shadow: 0.11rem 0.11rem 0 var(--pixel-ink);
+		box-shadow: var(--pixel-shadow-xs);
 		color: var(--pixel-ink);
+		font-family: var(--pixel-font-ui);
 		font-size: 0.72rem;
 		font-weight: 850;
 		text-transform: uppercase;
@@ -187,16 +272,20 @@
 	}
 	.pixel-kicker {
 		color: hsl(var(--muted-foreground));
+		font-family: var(--pixel-font-ui);
 		font-size: 0.72rem;
 		font-weight: 900;
-		letter-spacing: 0.12em;
+		letter-spacing: 0;
 		text-transform: uppercase;
 	}
 	.pixel-title {
 		color: var(--pixel-ink);
+		font-family: var(--pixel-font-ui);
 		font-weight: 900;
 		letter-spacing: 0;
-		text-shadow: 0.12rem 0.12rem 0 var(--pixel-yellow);
+		text-shadow:
+			0.12rem 0.12rem 0 var(--pixel-yellow),
+			0.22rem 0.22rem 0 oklch(0.24 0.065 281 / 0.18);
 	}
 	.pixel-danger {
 		color: hsl(var(--destructive));

@@ -1,9 +1,14 @@
+<script lang="ts">
+	import GalaxyBackground from '$lib/ui/GalaxyBackground.svelte';
+</script>
+
 <svelte:head>
 	<title>Zine — student visual essays</title>
 	<meta name="description" content="A public gallery of student-made scrollytelling zines." />
 </svelte:head>
 
 <main class="pixel-shell gallery-home">
+	<GalaxyBackground />
 	<div class="gallery-home__panel pixel-panel">
 		<div class="gallery-home__top">
 			<span class="pixel-badge">Student arcade</span>
@@ -34,15 +39,26 @@
 
 <style>
 	.gallery-home {
+		position: relative;
+		isolation: isolate;
 		display: grid;
 		min-height: 100vh;
 		grid-template-columns: minmax(0, 1.1fr) minmax(16rem, 0.7fr);
 		align-items: end;
 		gap: 1.5rem;
 		padding: min(10vw, 5rem);
+		/* Deep-space base behind the generative galaxy canvas (also the fallback before paint). */
+		background: radial-gradient(120% 90% at 50% 0%, #0c0b22 0%, #070611 55%, #04030c 100%);
+		color: hsl(var(--primary-foreground));
+	}
+	/* The panels are light cards floating in space — keep them above the fixed canvas. */
+	.gallery-home__gallery {
+		position: relative;
+		z-index: 1;
 	}
 	.gallery-home__panel {
 		position: relative;
+		z-index: 1;
 		padding: clamp(1.4rem, 4vw, 3rem);
 	}
 	.gallery-home__panel::after {

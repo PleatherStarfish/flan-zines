@@ -25,7 +25,7 @@
 		padding: 0.05rem 0.35rem;
 		font-size: 0.62rem;
 		font-weight: 800;
-		letter-spacing: 0.02em;
+		letter-spacing: 0;
 		text-transform: uppercase;
 	}
 	.ok {

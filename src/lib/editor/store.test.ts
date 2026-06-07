@@ -213,6 +213,19 @@ describe('EditorStore', () => {
 		expect(scene(sideId).scrollAxis).toBe('horizontal');
 	});
 
+	it('moves an element before or after another element for visual track ordering', () => {
+		store = makeStore();
+		const a = store.addElement('scn_1', 'heading')!;
+		const b = store.addElement('scn_1', 'richText')!;
+		const c = store.addElement('scn_1', 'image')!;
+
+		store.moveElementNear(a, c, 'after');
+		expect(elements(store).map((element) => element.id)).toEqual([b, c, a]);
+
+		store.moveElementNear(a, b, 'before');
+		expect(elements(store).map((element) => element.id)).toEqual([a, b, c]);
+	});
+
 	it('adds scenes and reorders them', () => {
 		store = makeStore();
 		const s2 = store.addScene('act_1', 'feature');

@@ -142,7 +142,7 @@
 		font-size: 0.64rem;
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
+		letter-spacing: 0;
 		color: hsl(var(--muted-foreground));
 	}
 	.combo__body {

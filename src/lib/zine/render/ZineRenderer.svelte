@@ -251,8 +251,17 @@
 		return `width:${screens * 100}%;transform:translateX(${(-shift * 100).toFixed(3)}%)`;
 	}
 
-	function actorStyle(element: Element): string {
-		return `left:${(element.range.start * 100).toFixed(2)}%`;
+	function elementZIndex(scene: Scene, element: Element): number {
+		const index = scene.elements.findIndex((candidate) => candidate.id === element.id);
+		return scene.elements.length - (index < 0 ? scene.elements.length - 1 : index);
+	}
+
+	function actorStyle(scene: Scene, element: Element): string {
+		return `left:${(element.range.start * 100).toFixed(2)}%;z-index:${elementZIndex(scene, element)}`;
+	}
+
+	function flowActorStyle(scene: Scene, element: Element): string {
+		return `z-index:${elementZIndex(scene, element)}`;
 	}
 </script>
 
@@ -298,7 +307,11 @@
 									})}
 									{#if def}
 										{@const Render = def.Render}
-										<div class="zine-actor" data-track={element.track} style={actorStyle(element)}>
+										<div
+											class="zine-actor"
+											data-track={element.track}
+											style={actorStyle(scene, element)}
+										>
 											<BlockFrame
 												blockId={element.id}
 												label={def.label}
@@ -322,16 +335,22 @@
 								})}
 								{#if def}
 									{@const Render = def.Render}
-									<BlockFrame
-										blockId={element.id}
-										label={def.label}
-										style={block.style}
-										animation={element.legacyAnimation}
-										timelineStyle={timeline.style || undefined}
-										timelineActive={timeline.active}
+									<div
+										class="zine-flow-actor"
+										data-track={element.track}
+										style={flowActorStyle(scene, element)}
 									>
-										<Render props={block.props} />
-									</BlockFrame>
+										<BlockFrame
+											blockId={element.id}
+											label={def.label}
+											style={block.style}
+											animation={element.legacyAnimation}
+											timelineStyle={timeline.style || undefined}
+											timelineActive={timeline.active}
+										>
+											<Render props={block.props} />
+										</BlockFrame>
+									</div>
 								{/if}
 							{/each}
 						{/if}
@@ -353,6 +372,7 @@
 											class="zine-free-actor"
 											data-track={element.track}
 											data-block-type={element.block.type}
+											style={flowActorStyle(scene, element)}
 										>
 											<BlockFrame
 												blockId={element.id}
@@ -450,7 +470,7 @@
 		font-size: clamp(2.25rem, 5vw, 3.5rem);
 		font-weight: 800;
 		line-height: 1.1;
-		letter-spacing: -0.02em;
+		letter-spacing: 0;
 		color: var(--zine-heading, var(--zine-fg));
 	}
 	.zine-scene {
@@ -462,6 +482,9 @@
 	.zine-scene__inner {
 		position: relative;
 		z-index: 1;
+	}
+	.zine-flow-actor {
+		position: relative;
 	}
 	/* A pinned timeline scene: the section is `scrollLength` screens tall (inline style),
 	   and this inner wrapper sticks in the viewport while the reader scrolls that whole
@@ -526,7 +549,6 @@
 	.zine-stage-overlay {
 		position: absolute;
 		inset: 0;
-		z-index: 2;
 		container-type: size;
 		overflow: hidden;
 		pointer-events: none;
@@ -538,11 +560,7 @@
 		pointer-events: auto;
 	}
 	.zine-free-actor[data-track='background'] {
-		z-index: 0;
 		pointer-events: none;
-	}
-	.zine-free-actor[data-track='media'] {
-		z-index: 1;
 	}
 	/* The block carries the path transform (inline, from the timeline). Its default — used when
 	   there's no motion, e.g. reduced-motion — centres the sprite on the stage. `- 50%` offsets
@@ -636,7 +654,7 @@
 		font-family: var(--zine-font-heading);
 		font-weight: 700;
 		line-height: 1.2;
-		letter-spacing: -0.01em;
+		letter-spacing: 0;
 		color: var(--zine-heading, var(--zine-fg));
 	}
 	:global(.zine h2.zine-heading) {
