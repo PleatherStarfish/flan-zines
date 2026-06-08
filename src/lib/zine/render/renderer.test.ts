@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { render } from '@testing-library/svelte';
+import { render, waitFor } from '@testing-library/svelte';
 import ZineRenderer from './ZineRenderer.svelte';
 import { seriousAxeViolations } from './axe-helper';
 import { parseDocument } from '../schema/migrate';
@@ -49,6 +49,14 @@ function renderFixture() {
 	return render(ZineRenderer, { props: { document, title: sampleZineMeta.title } });
 }
 
+function blockContaining(container: HTMLElement, text: string): HTMLElement {
+	const block = [...container.querySelectorAll<HTMLElement>('.zine-block')].find((candidate) =>
+		candidate.textContent?.includes(text)
+	);
+	if (!block) throw new Error(`Missing block containing "${text}"`);
+	return block;
+}
+
 describe('ZineRenderer', () => {
 	it('renders the title as the single h1 plus semantic content from every block', () => {
 		const { container } = renderFixture();
@@ -66,13 +74,34 @@ describe('ZineRenderer', () => {
 
 	it('produces a valid heading outline (starts at h1, never skips a level)', () => {
 		const { container } = renderFixture();
-		const levels = [...container.querySelectorAll('h1,h2,h3,h4,h5,h6')].map((h) =>
-			Number(h.tagName[1])
-		);
+		const headings = [...container.querySelectorAll('h1,h2,h3,h4,h5,h6')];
+		const levels = headings.map((h) => Number(h.tagName[1]));
 		expect(levels[0]).toBe(1);
 		for (let i = 1; i < levels.length; i++) {
 			expect(levels[i] - levels[i - 1]).toBeLessThanOrEqual(1);
 		}
+		expect(headings.map((h) => h.textContent?.trim())).not.toContain(
+			'A suspiciously specific field guide to storm drains'
+		);
+	});
+
+	it('renders the sample zine with explicit Content text roles and plain diagram labels', () => {
+		const { container } = renderFixture();
+		const body = blockContaining(container, 'The first minutes of a storm are not romantic');
+		expect(body.getAttribute('data-text-kind')).toBe('content');
+		expect(body.getAttribute('data-typeset-role')).toBe('body');
+		expect(body.getAttribute('style')).toMatch(/--zine-ts-measure:\s*62ch/);
+
+		const subhead = blockContaining(container, '1. First flush is not a metaphor');
+		expect(subhead.getAttribute('data-text-kind')).toBe('content');
+		expect(subhead.getAttribute('data-typeset-role')).toBe('subhead');
+
+		const label = blockContaining(container, '75 mm green-roof tray');
+		expect(label.getAttribute('data-text-kind')).toBe('other');
+		expect(label.hasAttribute('data-typeset')).toBe(false);
+		expect(label.hasAttribute('data-typeset-role')).toBe(false);
+		expect(label.getAttribute('data-text-backdrop')).toBe('box');
+		expect(label.closest('.zine-pinned-actor')?.getAttribute('data-region')).toBe('top-left');
 	});
 
 	it('has no critical or serious axe violations', async () => {
@@ -508,6 +537,328 @@ describe('ZineRenderer', () => {
 			expect(container.querySelector('.zine-stage')).toBeNull();
 		} finally {
 			window.matchMedia = original;
+		}
+	});
+
+	it('fit-collapses over-tall content and neutralizes flow text animation', async () => {
+		const originalMatchMedia = window.matchMedia;
+		const originalInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+		const originalRect = HTMLElement.prototype.getBoundingClientRect;
+		window.matchMedia = ((query: string) => ({
+			matches: false,
+			media: query,
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false
+		})) as typeof window.matchMedia;
+		Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+		HTMLElement.prototype.getBoundingClientRect = function () {
+			if (
+				this instanceof HTMLElement &&
+				this.classList.contains('zine-block') &&
+				this.textContent?.includes('Readable first')
+			) {
+				return {
+					x: 0,
+					y: 0,
+					top: 0,
+					right: 320,
+					bottom: 620,
+					left: 0,
+					width: 320,
+					height: 620,
+					toJSON: () => ({})
+				} as DOMRect;
+			}
+			return originalRect.call(this);
+		};
+		try {
+			const document = parseDocument({
+				schemaVersion: 7,
+				acts: [
+					{
+						id: 'act',
+						scenes: [
+							{
+								id: 'scn',
+								type: 'reveal',
+								length: 'auto',
+								scrollLength: 5,
+								beats: [{ id: 'b', at: 0 }],
+								elements: [
+									{
+										id: 'el',
+										track: 'content',
+										range: { start: 0.55, end: 0.85 },
+										enter: { type: 'rise', params: { speed: 'medium', direction: 'up' } },
+										block: {
+											id: 'blk',
+											type: 'heading',
+											props: { text: 'Readable first', level: 2 }
+										}
+									}
+								]
+							}
+						]
+					}
+				]
+			}) satisfies ZineDocument;
+			const { container } = render(ZineRenderer, {
+				props: { document, sceneProgress: { scn: 0.1 } }
+			});
+			await waitFor(() => {
+				expect(container.querySelector('.zine-scene')?.getAttribute('data-layout')).toBe('stacked');
+			});
+			expect(container.querySelector('.zine-scene')?.getAttribute('style')).toBeNull();
+			expect(container.querySelector('.zine-scene__inner.is-pinned')).toBeNull();
+			expect(container.querySelector('.zine-block')?.getAttribute('style')).not.toMatch(/opacity/);
+		} finally {
+			window.matchMedia = originalMatchMedia;
+			if (originalInnerHeight) Object.defineProperty(window, 'innerHeight', originalInnerHeight);
+			HTMLElement.prototype.getBoundingClientRect = originalRect;
+		}
+	});
+
+	it('keeps horizontal side-scrollers alive when only stage media actors are tall', async () => {
+		const originalMatchMedia = window.matchMedia;
+		const originalInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+		const originalRect = HTMLElement.prototype.getBoundingClientRect;
+		window.matchMedia = ((query: string) => ({
+			matches: false,
+			media: query,
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false
+		})) as typeof window.matchMedia;
+		Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+		HTMLElement.prototype.getBoundingClientRect = function () {
+			if (!(this instanceof HTMLElement) || !this.classList.contains('zine-block')) {
+				return originalRect.call(this);
+			}
+			const text = this.textContent ?? '';
+			if (text.includes('Runoff as a very fussy side-scroller')) {
+				return {
+					x: 0,
+					y: 0,
+					top: 0,
+					right: 320,
+					bottom: 120,
+					left: 0,
+					width: 320,
+					height: 120,
+					toJSON: () => ({})
+				} as DOMRect;
+			}
+			if (text.includes('Tall stage art')) {
+				return {
+					x: 0,
+					y: 0,
+					top: 0,
+					right: 320,
+					bottom: 520,
+					left: 0,
+					width: 320,
+					height: 520,
+					toJSON: () => ({})
+				} as DOMRect;
+			}
+			return originalRect.call(this);
+		};
+		try {
+			const document = parseDocument({
+				schemaVersion: 7,
+				acts: [
+					{
+						id: 'act',
+						scenes: [
+							{
+								id: 'scn',
+								type: 'sidescroll',
+								length: 'auto',
+								scrollAxis: 'horizontal',
+								scrollLength: 5,
+								beats: [{ id: 'b', at: 0 }],
+								elements: [
+									{
+										id: 'title',
+										track: 'content',
+										range: { start: 0.02, end: 0.18 },
+										block: {
+											id: 'title_blk',
+											type: 'heading',
+											props: { text: 'Runoff as a very fussy side-scroller', level: 2 }
+										}
+									},
+									{
+										id: 'art_a',
+										track: 'background',
+										range: { start: 0.2, end: 0.4 },
+										block: {
+											id: 'art_a_blk',
+											type: 'richText',
+											props: {
+												doc: {
+													type: 'doc',
+													content: [
+														{
+															type: 'paragraph',
+															content: [{ type: 'text', text: 'Tall stage art A' }]
+														}
+													]
+												}
+											}
+										}
+									},
+									{
+										id: 'art_b',
+										track: 'media',
+										range: { start: 0.55, end: 0.75 },
+										block: {
+											id: 'art_b_blk',
+											type: 'richText',
+											props: {
+												doc: {
+													type: 'doc',
+													content: [
+														{
+															type: 'paragraph',
+															content: [{ type: 'text', text: 'Tall stage art B' }]
+														}
+													]
+												}
+											}
+										}
+									}
+								]
+							}
+						]
+					}
+				]
+			}) satisfies ZineDocument;
+
+			const { container } = render(ZineRenderer, {
+				props: { document, sceneProgress: { scn: 0.5 } }
+			});
+			await waitFor(() => {
+				expect(container.querySelector('.zine-scene')?.getAttribute('data-layout')).toBe(
+					'timeline'
+				);
+			});
+			expect(container.querySelector('.zine-scene')?.hasAttribute('data-fit-collapse')).toBe(false);
+			expect(container.querySelector('.zine-scene')?.getAttribute('data-axis')).toBe('horizontal');
+			expect(container.querySelector('.zine-scene__inner.is-pinned.is-horizontal')).toBeTruthy();
+			expect(container.querySelector('.zine-stage')?.getAttribute('style')).toMatch(
+				/width:\s*500%/
+			);
+		} finally {
+			window.matchMedia = originalMatchMedia;
+			if (originalInnerHeight) Object.defineProperty(window, 'innerHeight', originalInnerHeight);
+			HTMLElement.prototype.getBoundingClientRect = originalRect;
+		}
+	});
+
+	it('fit-collapses over-tall stage actors even when they are not Content text', async () => {
+		const originalMatchMedia = window.matchMedia;
+		const originalInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+		const originalRect = HTMLElement.prototype.getBoundingClientRect;
+		window.matchMedia = ((query: string) => ({
+			matches: false,
+			media: query,
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false
+		})) as typeof window.matchMedia;
+		Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+		HTMLElement.prototype.getBoundingClientRect = function () {
+			if (
+				this instanceof HTMLElement &&
+				this.classList.contains('zine-block') &&
+				this.textContent?.includes('Tall diagram label')
+			) {
+				return {
+					x: 0,
+					y: 0,
+					top: 0,
+					right: 320,
+					bottom: 620,
+					left: 0,
+					width: 320,
+					height: 620,
+					toJSON: () => ({})
+				} as DOMRect;
+			}
+			return originalRect.call(this);
+		};
+		try {
+			const document = parseDocument({
+				schemaVersion: 7,
+				acts: [
+					{
+						id: 'act',
+						scenes: [
+							{
+								id: 'scn',
+								type: 'reveal',
+								length: 'auto',
+								scrollLength: 4,
+								beats: [{ id: 'b', at: 0 }],
+								elements: [
+									{
+										id: 'label',
+										track: 'media',
+										placement: 'pinned',
+										anchor: { region: 'center' },
+										range: { start: 0, end: 1 },
+										block: {
+											id: 'label_blk',
+											type: 'richText',
+											props: {
+												doc: {
+													type: 'doc',
+													content: [
+														{
+															type: 'paragraph',
+															content: [{ type: 'text', text: 'Tall diagram label' }]
+														}
+													]
+												}
+											}
+										}
+									}
+								]
+							}
+						]
+					}
+				]
+			}) satisfies ZineDocument;
+
+			const { container } = render(ZineRenderer, { props: { document } });
+			await waitFor(() => {
+				expect(container.querySelector('.zine-scene')?.getAttribute('data-fit-collapse')).toBe(
+					'true'
+				);
+			});
+			expect(container.querySelector('.zine-scene')?.getAttribute('data-layout')).toBe('stacked');
+			expect(container.querySelector('.zine-scene')?.getAttribute('style')).toBeNull();
+			expect(container.querySelector('.zine-scene__inner.is-pinned')).toBeNull();
+			expect(container.querySelector('.zine-pinned-actor')).toBeNull();
+			expect(
+				container.querySelector('.zine-flow-actor[data-track="media"] .zine-block')
+			).toBeTruthy();
+			expect(container.querySelector('.zine-block')?.getAttribute('data-text-kind')).toBe('other');
+		} finally {
+			window.matchMedia = originalMatchMedia;
+			if (originalInnerHeight) Object.defineProperty(window, 'innerHeight', originalInnerHeight);
+			HTMLElement.prototype.getBoundingClientRect = originalRect;
 		}
 	});
 });

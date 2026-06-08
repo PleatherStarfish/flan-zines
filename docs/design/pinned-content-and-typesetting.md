@@ -223,16 +223,17 @@ by the renderer** (author ≡ published), not editor-only code.
 A **role** is a one-tap preset that applies a _correct_ bundle. Student-facing labels avoid
 jargon; the internal id is in parentheses.
 
-| Student label   | (role id / magazine term) | Eligible blocks   | Baked-in defaults                                                                                                                |
-| --------------- | ------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **Headline**    | `headline`                | heading           | heading font, large, bold, leading 1.15, **balanced line breaks**, flush-left/centred. **Visual only — never an `h1`** (see B.5) |
-| **Tiny label**  | `kicker` / eyebrow        | heading           | small, small-caps or ALL-CAPS, tracked, accent colour — sits above a headline                                                    |
-| **Intro**       | `deck` / standfirst       | heading, richText | ~1.25× body, lighter, muted, balanced wrap, generous measure                                                                     |
-| **Body**        | `body`                    | richText          | body font, **measure ~62ch**, flush-left/ragged, leading **≥1.45**, tidy wrapping                                                |
-| **Big quote**   | `pullquote`               | richText          | large, accent rule, narrow measure, optional centred, light first-line "hang" (B.4)                                              |
-| **Quote block** | `blockquote`              | richText          | indented with a left rule, slightly muted                                                                                        |
-| **Caption**     | `caption`                 | richText          | small, muted, tight measure                                                                                                      |
-| **Credit**      | `byline`                  | richText          | small, tracked, muted ("WORDS BY …")                                                                                             |
+| Student label       | (role id / magazine term) | Eligible blocks   | Baked-in defaults                                                                                                                 |
+| ------------------- | ------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Headline**        | `headline`                | heading           | heading font, large, bold, leading 1.15, **balanced line breaks**, flush-left/centred. **Visual only — never an `h1`** (see B.5)  |
+| **Section heading** | `subhead`                 | heading           | heading font, medium-bold, leading ~1.22, balanced line breaks — for h3/h4 article breaks that should not become full title cards |
+| **Tiny label**      | `kicker` / eyebrow        | heading           | small, small-caps or ALL-CAPS, tracked, accent colour — sits above a headline                                                     |
+| **Intro**           | `deck` / standfirst       | heading, richText | ~1.25× body, lighter, muted, balanced wrap, generous measure                                                                      |
+| **Body**            | `body`                    | richText          | body font, **measure ~62ch**, flush-left/ragged, leading **≥1.45**, tidy wrapping                                                 |
+| **Big quote**       | `pullquote`               | richText          | large, accent rule, narrow measure, optional centred, light first-line "hang" (B.4)                                               |
+| **Quote block**     | `blockquote`              | richText          | indented with a left rule, slightly muted                                                                                         |
+| **Caption**         | `caption`                 | richText          | small, muted, tight measure                                                                                                       |
+| **Credit**          | `byline`                  | richText          | small, tracked, muted ("WORDS BY …")                                                                                              |
 
 Choosing a role sets the chips below; the student can still nudge each.
 
@@ -242,7 +243,7 @@ Choosing a role sets the chips below; the student can still nudge each.
   cap is the guardrail (rule: 45–75, ~66 optimal; novices ~45) — an unreadable 110-char line is
   impossible.
 - **Line spacing** → _Tight / Cozy / Airy_, **role-aware & clamped**: Body = **1.45 / 1.6 /
-  1.8** (never below 1.45); display roles (headline/intro/tiny-label/big-quote) may use
+  1.8** (never below 1.45); display roles (headline/section-heading/intro/tiny-label/big-quote) may use
   1.15–1.3. (Leading ≥ word spacing.)
 - **Line up text** → _Left / Centred / Even edges_. **Left is the default & recommended.**
   "Even edges" (justified) is offered **only on Medium/Wide** measure, and the renderer
@@ -261,7 +262,7 @@ Choosing a role sets the chips below; the student can still nudge each.
 BLOCK_ALIGNMENTS = ['left','center','right','justify']   // + 'justify'
 
 BlockStyle.typeset?: {                 // all optional, all bounded
-  role?: 'headline'|'kicker'|'deck'|'body'|'pullquote'|'blockquote'|'caption'|'byline',
+  role?: 'headline'|'subhead'|'kicker'|'deck'|'body'|'pullquote'|'blockquote'|'caption'|'byline',
   measure?: 'narrow'|'medium'|'wide',
   leading?: 'tight'|'cozy'|'airy',
   case?: 'normal'|'upper'|'smallcaps',

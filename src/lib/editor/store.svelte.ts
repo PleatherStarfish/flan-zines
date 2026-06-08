@@ -895,7 +895,7 @@ function setTextKindOnElement(element: Element, kind: TextKind): void {
 		nextStyle.typeset = {
 			...(nextStyle.typeset ?? {}),
 			kind: 'content',
-			role: nextStyle.typeset?.role ?? defaultContentRole(element.block.type)
+			role: nextStyle.typeset?.role ?? defaultContentRole(element.block.type, element.block.props)
 		};
 	} else {
 		nextStyle.typeset = { kind: 'other' };

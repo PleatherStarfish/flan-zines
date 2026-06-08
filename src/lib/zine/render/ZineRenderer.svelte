@@ -55,23 +55,25 @@
 	const rm = $derived($reducedMotion);
 	const framedViewport = $derived(viewport === 'frame');
 
-	// Narrow screens collapse `pinned` content to readable stacked flow (the Pudding "stack it"
-	// fallback): absolute corner-anchoring would overlap on a phone. CSS below applies this at
-	// first paint; JS mirrors it after hydration so pinned actors move into source-order DOM.
-	// The editor's fixed laptop frame is exempt so the preview shows the pinned layout. Shares the
-	// 700px breakpoint with the CSS in this file.
+	// Narrow viewports collapse timeline scenes to readable stacked flow (the Pudding "stack it"
+	// fallback): absolute/sticky anchoring would overlap on a phone. CSS below applies this at
+	// first paint; JS mirrors it after hydration so stage actors move into source-order DOM. Short
+	// desktop windows are handled by the measured fit pass below, not a blanket media query, so
+	// side-scrollers can remain side-scrollers when their readable content fits.
 	let narrow = $state(false);
 	$effect(() => {
 		if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-		const mql = window.matchMedia('(max-width: 700px)');
-		const update = () => (narrow = mql.matches);
+		const narrowMql = window.matchMedia('(max-width: 700px)');
+		const update = () => (narrow = narrowMql.matches);
 		update();
-		mql.addEventListener('change', update);
-		return () => mql.removeEventListener('change', update);
+		narrowMql.addEventListener('change', update);
+		return () => narrowMql.removeEventListener('change', update);
 	});
-	// `pinned` content lays out in normal flow (not the viewport overlay) when reduced motion is on
-	// OR the screen is narrow — both want a stacked, readable article.
-	const collapsed = $derived(rm || (narrow && !framedViewport));
+	// Text/content must never depend on fitting inside a viewport-locked sticky box. After
+	// hydration, measure each pin-candidate scene's source-order actor stack against the real
+	// visible viewport height (Pudding perf §3: JS-measured fit → px from innerHeight). Over-tall
+	// scenes fall back to source-order flow instead of nested scrolling or clipping.
+	let layoutOverflowSceneIds = $state<Set<string>>(new Set());
 
 	// Scene continuity (transitions.ts): the document `pacing` preset drives the crossfading
 	// backdrop + the breathing-room gap between scenes.
@@ -85,6 +87,7 @@
 	// z-index:-1 fixed layer was painted behind the article's own opaque background.)
 	const pacing = $derived<Pacing>((document.pacing ?? 'cozy') as Pacing);
 	const allScenes = $derived(document.acts.flatMap((act) => act.scenes));
+	const sceneById = $derived(new Map(allScenes.map((scene) => [scene.id, scene])));
 	let mounted = $state(false);
 	$effect(() => {
 		mounted = true;
@@ -196,6 +199,75 @@
 		};
 	});
 
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const root = rootEl;
+		if (!root) return;
+		let frame = 0;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const fitBlocksFor = (section: HTMLElement, scene: Scene): HTMLElement[] => {
+			const selector =
+				scene.scrollAxis === 'horizontal'
+					? [
+							'.zine-flow-actor[data-track="content"] > .zine-block',
+							'.zine-actor[data-track="content"] > .zine-block',
+							'.zine-free-actor[data-track="content"] > .zine-block',
+							'.zine-pinned-actor[data-track="content"] > .zine-block'
+						].join(',')
+					: [
+							'.zine-flow-actor > .zine-block',
+							'.zine-actor > .zine-block',
+							'.zine-free-actor > .zine-block',
+							'.zine-pinned-actor > .zine-block'
+						].join(',');
+			return [...section.querySelectorAll<HTMLElement>(selector)].filter(
+				(block) => block.getBoundingClientRect().height > 0
+			);
+		};
+		const measureSceneFit = () => {
+			frame = 0;
+			const viewportHeight = framedViewport
+				? root.getBoundingClientRect().height
+				: window.innerHeight || 1;
+			if (viewportHeight <= 0) return;
+			const next = new Set<string>();
+			for (const section of root.querySelectorAll<HTMLElement>('[data-pin-candidate]')) {
+				const id = section.dataset.sceneId;
+				if (!id) continue;
+				const scene = sceneById.get(id);
+				if (!scene) continue;
+				const actorBlocks = fitBlocksFor(section, scene);
+				if (!actorBlocks.length) continue;
+				const stackHeight = actorBlocks.reduce(
+					(total, block) => total + block.getBoundingClientRect().height,
+					Math.max(0, actorBlocks.length - 1) * 16
+				);
+				if (stackHeight > viewportHeight * 0.88) next.add(id);
+			}
+			layoutOverflowSceneIds = next;
+		};
+		const scheduleSoon = () => {
+			if (!frame) frame = requestAnimationFrame(measureSceneFit);
+		};
+		const scheduleResize = () => {
+			if (timer) clearTimeout(timer);
+			timer = setTimeout(scheduleSoon, 150);
+		};
+		scheduleSoon();
+		window.addEventListener('resize', scheduleResize, { passive: true });
+		root.addEventListener('load', scheduleResize, { capture: true });
+		const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleResize);
+		ro?.observe(root);
+		void globalThis.document?.fonts?.ready?.then(scheduleResize);
+		return () => {
+			if (frame) cancelAnimationFrame(frame);
+			if (timer) clearTimeout(timer);
+			window.removeEventListener('resize', scheduleResize);
+			root.removeEventListener('load', scheduleResize, { capture: true });
+			ro?.disconnect();
+		};
+	});
+
 	function progressFor(sceneId: string): number | undefined {
 		return sceneProgress[sceneId] ?? driven[sceneId];
 	}
@@ -208,38 +280,51 @@
 		return scene.background?.fill?.kind === 'canvas';
 	}
 
-	// Stage elements float over the scene in the viewport-fixed overlay: `free` = a path-driven
-	// sprite; `pinned` = content anchored to a screen region. Under reduced motion both fall back
-	// to normal in-flow source order (fully readable, no overlay). `pinned` ALSO collapses to flow
-	// on a narrow screen (`collapsed`); `free` sprites stay on the stage there (decorative).
-	function freeElementsFor(scene: Scene): Element[] {
-		return rm ? [] : scene.elements.filter((element) => element.placement === 'free');
-	}
-	function pinnedElementsFor(scene: Scene): Element[] {
-		return collapsed ? [] : scene.elements.filter((element) => element.placement === 'pinned');
-	}
-	function flowElementsFor(scene: Scene): Element[] {
-		if (rm) return scene.elements; // reduced motion: everything in readable source order
-		return scene.elements.filter((element) => {
-			if (element.placement === 'free') return false; // free → stage
-			if (element.placement === 'pinned') return collapsed; // pinned → flow only when collapsed
-			return true;
-		});
-	}
-	function hasStageElements(scene: Scene): boolean {
-		return freeElementsFor(scene).length > 0 || pinnedElementsFor(scene).length > 0;
+	function hasStagePlacement(scene: Scene): boolean {
+		return scene.elements.some(
+			(element) => element.placement === 'free' || element.placement === 'pinned'
+		);
 	}
 
-	function isPinned(scene: Scene): boolean {
-		// Under reduced motion every scene lays out in normal source order (scene-timeline.md
-		// §8) — no tall pinned region to scroll past, just a readable page. A canvas background
-		// or stage elements (free sprites / pinned actors) pin so they get a full-screen,
-		// viewport-fixed stage to play over.
+	function isPinCandidate(scene: Scene): boolean {
 		return (
 			pinScenes &&
 			!rm &&
-			(scene.type !== 'page' || hasCanvasBackground(scene) || hasStageElements(scene))
+			(scene.type !== 'page' || hasCanvasBackground(scene) || hasStagePlacement(scene))
 		);
+	}
+
+	function isStackedScene(scene: Scene): boolean {
+		return rm || (!framedViewport && narrow) || layoutOverflowSceneIds.has(scene.id);
+	}
+
+	// Stage elements float over the scene in the viewport-fixed overlay: `free` = a path-driven
+	// sprite; `pinned` = content anchored to a screen region. Under reduced motion, narrow/short
+	// viewports, or a measured over-tall scene, everything falls back to normal in-flow
+	// source order (fully readable, no overlay).
+	function freeElementsFor(scene: Scene): Element[] {
+		return isStackedScene(scene)
+			? []
+			: scene.elements.filter((element) => element.placement === 'free');
+	}
+	function pinnedElementsFor(scene: Scene): Element[] {
+		return isStackedScene(scene)
+			? []
+			: scene.elements.filter((element) => element.placement === 'pinned');
+	}
+	function flowElementsFor(scene: Scene): Element[] {
+		if (isStackedScene(scene)) return scene.elements; // readable source order
+		return scene.elements.filter((element) => {
+			if (element.placement === 'free') return false; // free → stage
+			if (element.placement === 'pinned') return false; // pinned → stage unless stacked
+			return true;
+		});
+	}
+	function isPinned(scene: Scene): boolean {
+		// Stacked scenes lay out in normal source order (scene-timeline.md §8) — no tall pinned
+		// region to scroll past, just a readable page. A canvas background or stage elements
+		// (free sprites / pinned actors) otherwise pin so they get a full-screen stage to play over.
+		return isPinCandidate(scene) && !isStackedScene(scene);
 	}
 
 	function hexToRgb(hex: string): [number, number, number] | null {
@@ -315,7 +400,7 @@
 	// each element sits at `range.start` along the track (a future layer will add precise
 	// per-progress positions — "jump up to the platform").
 	function isHorizontal(scene: Scene): boolean {
-		return !rm && scene.scrollAxis === 'horizontal';
+		return !isStackedScene(scene) && scene.scrollAxis === 'horizontal';
 	}
 
 	function stageStyle(scene: Scene, progress: number | undefined): string {
@@ -353,6 +438,7 @@
 	class:has-backdrop={enhanced}
 	lang="en"
 	data-viewport={viewport}
+	data-hydrated={mounted || undefined}
 	style={`${rootStyle};${gapStyle}`}
 	bind:this={rootEl}
 >
@@ -370,6 +456,7 @@
 		<div class="zine-act" data-act={act.id}>
 			{#each act.scenes as scene (scene.id)}
 				{@const progress = progressFor(scene.id)}
+				{@const stacked = isStackedScene(scene)}
 				{@const horizontal = isHorizontal(scene)}
 				{@const flowElements = flowElementsFor(scene)}
 				{@const freeElements = freeElementsFor(scene)}
@@ -380,6 +467,9 @@
 					data-length={scene.length}
 					data-axis={horizontal ? 'horizontal' : 'vertical'}
 					data-scene-id={scene.id}
+					data-pin-candidate={isPinCandidate(scene) || undefined}
+					data-layout={stacked ? 'stacked' : 'timeline'}
+					data-fit-collapse={layoutOverflowSceneIds.has(scene.id) || undefined}
 					style={sceneSectionStyle(scene)}
 				>
 					{#if !enhanced && (scene.background?.fill || scene.background?.overlay)}
@@ -404,7 +494,7 @@
 								{#each flowElements as element (element.id)}
 									{@const def = getBlock(element.block.type)}
 									{@const timeline = composeElementStyle(element, progress, impls, {
-										reducedMotion: rm,
+										reducedMotion: stacked,
 										axis: 'horizontal'
 									})}
 									{#if def}
@@ -417,6 +507,7 @@
 											<BlockFrame
 												blockId={element.id}
 												blockType={element.block.type}
+												blockProps={element.block.props}
 												label={def.label}
 												style={element.block.style}
 												textKind={textKindForElement(element)}
@@ -435,7 +526,7 @@
 								{@const block = element.block}
 								{@const def = getBlock(block.type)}
 								{@const timeline = composeElementStyle(element, progress, impls, {
-									reducedMotion: rm
+									reducedMotion: stacked
 								})}
 								{#if def}
 									{@const Render = def.Render}
@@ -447,6 +538,7 @@
 										<BlockFrame
 											blockId={element.id}
 											blockType={block.type}
+											blockProps={block.props}
 											label={def.label}
 											style={block.style}
 											textKind={textKindForElement(element)}
@@ -484,6 +576,7 @@
 											<BlockFrame
 												blockId={element.id}
 												blockType={element.block.type}
+												blockProps={element.block.props}
 												label={def.label}
 												style={element.block.style}
 												textKind={textKindForElement(element)}
@@ -517,6 +610,7 @@
 											<BlockFrame
 												blockId={element.id}
 												blockType={element.block.type}
+												blockProps={element.block.props}
 												label={def.label}
 												style={element.block.style}
 												textKind={textKindForElement(element)}
@@ -849,8 +943,29 @@
 	/* Editorial typeset — data-attrs / custom props set by BlockFrame from resolveTypeset()
 	   (bounded values only). Measure caps line length; leading is role-floored. */
 	:global(.zine .zine-block[data-typeset]) {
-		max-width: var(--zine-ts-measure, var(--zine-measure));
 		line-height: var(--zine-ts-leading, inherit);
+	}
+	:global(.zine .zine-block[data-typeset]:not([data-text-kind='content'])) {
+		max-width: var(--zine-ts-measure, var(--zine-measure));
+	}
+	/* Content text shares a common left rail. Individual roles still keep their readable
+	   measure on the inner heading/prose, but the outer block no longer recentres every
+	   role independently. This keeps article headings, subheads, body copy, and quotes aligned. */
+	:global(.zine .zine-block[data-text-kind='content']) {
+		max-width: var(--zine-measure);
+	}
+	:global(.zine .zine-block[data-text-kind='content'] > .zine-heading),
+	:global(.zine .zine-block[data-text-kind='content'] > .zine-richtext) {
+		max-width: var(--zine-ts-measure, 100%);
+		margin-inline: 0 auto;
+	}
+	:global(.zine .zine-block[data-text-kind='content'][data-align='center'] > .zine-heading),
+	:global(.zine .zine-block[data-text-kind='content'][data-align='center'] > .zine-richtext) {
+		margin-inline: auto;
+	}
+	:global(.zine .zine-block[data-text-kind='content'][data-align='right'] > .zine-heading),
+	:global(.zine .zine-block[data-text-kind='content'][data-align='right'] > .zine-richtext) {
+		margin-inline: auto 0;
 	}
 	:global(.zine .zine-block[data-text-case='upper']) {
 		text-transform: uppercase;
@@ -873,6 +988,13 @@
 		font-family: var(--zine-font-heading);
 		font-weight: 800;
 		font-size: clamp(1.9rem, 4.5vw, 3rem);
+		color: var(--zine-heading, var(--zine-fg));
+	}
+	:global(.zine .zine-block[data-typeset-role='subhead'] .zine-heading),
+	:global(.zine .zine-block[data-typeset-role='subhead'] .zine-richtext) {
+		font-family: var(--zine-font-heading);
+		font-weight: 800;
+		font-size: clamp(1.28rem, 2.1vw, 1.72rem);
 		color: var(--zine-heading, var(--zine-fg));
 	}
 	:global(.zine .zine-block[data-typeset-role='kicker'] .zine-heading),
@@ -1070,6 +1192,10 @@
 		margin: 0 0 1.1rem;
 		padding-left: 1.5rem;
 	}
+	:global(.zine .zine-block[data-text-kind='content'] .zine-richtext ul),
+	:global(.zine .zine-block[data-text-kind='content'] .zine-richtext ol) {
+		padding-left: 0;
+	}
 	:global(.zine .zine-richtext ul) {
 		list-style: disc;
 	}
@@ -1141,6 +1267,62 @@
 		height: 5rem;
 	}
 
+	/* Baseline readability: before JS hydrates (or for a measured over-tall scene),
+	   timeline scenes flatten to source order. Hydration may enhance back to sticky only after
+	   the renderer can measure real viewport height; no-JS readers never get clipped prose. */
+	.zine:not([data-viewport='frame']):not([data-hydrated]) .zine-scene,
+	.zine:not([data-viewport='frame']) .zine-scene[data-fit-collapse] {
+		min-height: 0 !important;
+	}
+	.zine:not([data-viewport='frame']):not([data-hydrated]) .zine-scene__inner.is-pinned,
+	.zine:not([data-viewport='frame']):not([data-hydrated]) .zine-scene__inner.is-horizontal,
+	.zine:not([data-viewport='frame']):not([data-hydrated])
+		.zine-scene__inner.is-horizontal.is-pinned,
+	.zine:not([data-viewport='frame']) .zine-scene[data-fit-collapse] .zine-scene__inner,
+	.zine:not([data-viewport='frame'])
+		.zine-scene[data-fit-collapse]
+		.zine-scene__inner.is-horizontal.is-pinned {
+		position: static;
+		min-height: 0;
+		height: auto;
+		display: block;
+		overflow: visible;
+	}
+	.zine:not([data-viewport='frame']):not([data-hydrated]) .zine-stage,
+	.zine:not([data-viewport='frame']):not([data-hydrated]) .zine-stage-overlay,
+	.zine:not([data-viewport='frame']) .zine-scene[data-fit-collapse] .zine-stage,
+	.zine:not([data-viewport='frame']) .zine-scene[data-fit-collapse] .zine-stage-overlay {
+		position: static;
+		width: auto;
+		height: auto;
+		transform: none !important;
+		container-type: normal;
+	}
+	.zine:not([data-viewport='frame']):not([data-hydrated]) .zine-actor,
+	.zine:not([data-viewport='frame']):not([data-hydrated]) .zine-free-actor,
+	.zine:not([data-viewport='frame']):not([data-hydrated]) .zine-pinned-actor,
+	.zine:not([data-viewport='frame']) .zine-scene[data-fit-collapse] .zine-actor,
+	.zine:not([data-viewport='frame']) .zine-scene[data-fit-collapse] .zine-free-actor,
+	.zine:not([data-viewport='frame']) .zine-scene[data-fit-collapse] .zine-pinned-actor {
+		position: static;
+		max-block-size: none;
+		max-inline-size: 100%;
+		overflow: visible;
+		translate: none !important;
+	}
+	.zine:not([data-viewport='frame']):not([data-hydrated]) .zine-free-actor :global(.zine-block),
+	.zine:not([data-viewport='frame']):not([data-hydrated]) .zine-pinned-actor :global(.zine-block),
+	.zine:not([data-viewport='frame'])
+		.zine-scene[data-fit-collapse]
+		.zine-free-actor
+		:global(.zine-block),
+	.zine:not([data-viewport='frame'])
+		.zine-scene[data-fit-collapse]
+		.zine-pinned-actor
+		:global(.zine-block) {
+		transform: none !important;
+	}
+
 	/* Reduced motion is a first-class, CSS-driven layout — so a reduced-motion reader gets the
 	   flat, source-order page IMMEDIATELY (server-rendered), with no pinned/transformed layout
 	   flashing before hydration corrects it. Mirrors the JS reduced-motion path (which the
@@ -1185,9 +1367,9 @@
 		}
 	}
 
-	/* Same readable-stack fallback on narrow screens, applied before hydration so pinned actors
-	   never flash as an absolute overlay on phones/Chromebooks. The editor's framed preview keeps
-	   the full pinned choreography even if the frame itself is small. */
+	/* Same readable-stack fallback on narrow viewports, applied before hydration so pinned/sticky
+	   actors never clip prose on phones. Short-but-wide windows use the measured fit collapse
+	   above, which keeps horizontal scenes interactive when their readable content fits. */
 	@media (max-width: 700px) {
 		.zine:not([data-viewport='frame']) .zine-scene {
 			min-height: 0 !important;

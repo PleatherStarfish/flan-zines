@@ -64,6 +64,7 @@ export type TextBackdrop = z.infer<typeof TextBackdropSchema>;
 // flush-left, body leading floor 1.45). v1 ships these; dropCap/columns are reserved for v2.
 export const TYPESET_ROLES = [
 	'headline',
+	'subhead',
 	'kicker',
 	'deck',
 	'body',

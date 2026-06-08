@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTypeset } from './typeset';
+import { resolveTypeset, textKindForElement } from './typeset';
 import type { BlockStyle } from '../schema/theme';
 
 const style = (s: BlockStyle): BlockStyle => s;
@@ -15,6 +15,13 @@ describe('resolveTypeset', () => {
 		expect(heading.hasTypeset).toBe(true);
 		expect(heading.role).toBe('headline');
 		expect(heading.tidyWrap).toBe('balance');
+
+		const subhead = resolveTypeset(style({ typeset: { kind: 'content' } }), 'heading', 'content', {
+			text: 'A detail',
+			level: 3
+		});
+		expect(subhead.role).toBe('subhead');
+		expect(subhead.tidyWrap).toBe('balance');
 
 		const body = resolveTypeset(style({ typeset: { kind: 'content' } }), 'richText', 'content');
 		expect(body.role).toBe('body');
@@ -38,6 +45,7 @@ describe('resolveTypeset', () => {
 
 	it('gives a role a sensible default measure', () => {
 		expect(resolveTypeset(style({ typeset: { role: 'body' } })).measureCh).toBe(62);
+		expect(resolveTypeset(style({ typeset: { role: 'subhead' } })).measureCh).toBe(62);
 		expect(resolveTypeset(style({ typeset: { role: 'pullquote' } })).measureCh).toBe(45);
 		expect(resolveTypeset(style({ typeset: { role: 'deck' } })).measureCh).toBe(75);
 	});
@@ -54,6 +62,9 @@ describe('resolveTypeset', () => {
 		expect(
 			resolveTypeset(style({ typeset: { role: 'headline', leading: 'tight' } })).leading
 		).toBeLessThan(1.45);
+		expect(resolveTypeset(style({ typeset: { role: 'subhead', leading: 'tight' } })).leading).toBe(
+			1.12
+		);
 	});
 
 	it('enforces justify only on a medium/wide measure (narrow → left)', () => {
@@ -90,5 +101,24 @@ describe('resolveTypeset', () => {
 		).toBeUndefined();
 		// A non-tidy role (caption) doesn't balance unless asked.
 		expect(resolveTypeset(style({ typeset: { role: 'caption' } })).tidyWrap).toBeUndefined();
+	});
+
+	it('defaults text on non-content tracks to other text unless explicitly content', () => {
+		const mediaLabel = textKindForElement({
+			track: 'media',
+			block: { id: 'blk', type: 'heading', props: { text: 'Diagram label', level: 3 } }
+		});
+		expect(mediaLabel).toBe('other');
+
+		const explicitContent = textKindForElement({
+			track: 'media',
+			block: {
+				id: 'blk',
+				type: 'heading',
+				props: { text: 'Essay label', level: 3 },
+				style: { typeset: { kind: 'content' } }
+			}
+		});
+		expect(explicitContent).toBe('content');
 	});
 });

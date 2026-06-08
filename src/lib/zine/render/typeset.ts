@@ -41,24 +41,35 @@ export function isTextBlockType(type: string): boolean {
 	return TEXT_BLOCK_TYPES.has(type);
 }
 
-export function defaultContentRole(blockType: string | undefined): TypesetRole | undefined {
-	if (blockType === 'heading') return 'headline';
+function headingLevel(props: unknown): number | undefined {
+	if (!props || typeof props !== 'object') return undefined;
+	const level = (props as { level?: unknown }).level;
+	return typeof level === 'number' ? level : undefined;
+}
+
+export function defaultContentRole(
+	blockType: string | undefined,
+	props?: unknown
+): TypesetRole | undefined {
+	if (blockType === 'heading') return (headingLevel(props) ?? 2) >= 3 ? 'subhead' : 'headline';
 	if (blockType === 'richText') return 'body';
 	return undefined;
 }
 
 export function textKindForElement(
-	element: Pick<Element, 'placement' | 'motion' | 'block'>
+	element: Pick<Element, 'track' | 'placement' | 'motion' | 'block'>
 ): TextKind | undefined {
 	if (!isTextBlockType(element.block.type)) return undefined;
 	const explicit = element.block.style?.typeset?.kind;
 	if (explicit) return explicit;
+	if (element.track !== 'content') return 'other';
 	if (element.placement || element.motion) return 'other';
 	return 'content';
 }
 
 // A role's default measure when the author hasn't picked one explicitly.
 const ROLE_MEASURE: Partial<Record<TypesetRole, 'narrow' | 'medium' | 'wide'>> = {
+	subhead: 'medium',
 	deck: 'wide',
 	body: 'medium',
 	pullquote: 'narrow',
@@ -70,6 +81,7 @@ const ROLE_MEASURE: Partial<Record<TypesetRole, 'narrow' | 'medium' | 'wide'>> =
 // Display roles can use tight leading; text roles are floored at 1.45 for readability.
 const DISPLAY_ROLES: ReadonlySet<TypesetRole> = new Set([
 	'headline',
+	'subhead',
 	'kicker',
 	'deck',
 	'pullquote',
@@ -83,7 +95,10 @@ function leadingValue(
 	if (!role && !leading) return undefined;
 	if (role && DISPLAY_ROLES.has(role)) {
 		const map = { tight: 1.12, cozy: 1.25, airy: 1.4 } as const;
-		return leading ? map[leading] : role === 'deck' ? 1.3 : 1.15;
+		if (leading) return map[leading];
+		if (role === 'deck') return 1.3;
+		if (role === 'subhead') return 1.22;
+		return 1.15;
 	}
 	// body / blockquote / caption (text-level): never below 1.45.
 	const map = { tight: 1.45, cozy: 1.6, airy: 1.8 } as const;
@@ -94,12 +109,13 @@ function leadingValue(
 export function resolveTypeset(
 	style: BlockStyle | undefined,
 	blockType?: string,
-	textKind?: TextKind
+	textKind?: TextKind,
+	blockProps?: unknown
 ): ResolvedTypeset {
 	const ts = style?.typeset;
 	const kind = textKind ?? ts?.kind;
 	const isContent = kind === 'content';
-	const role = isContent ? (ts?.role ?? defaultContentRole(blockType)) : ts?.role;
+	const role = isContent ? (ts?.role ?? defaultContentRole(blockType, blockProps)) : ts?.role;
 	const hasTypeset = Boolean(
 		isContent ||
 		(kind !== 'other' &&
@@ -126,7 +142,10 @@ export function resolveTypeset(
 	const textCase = rawCase === 'normal' || rawCase === undefined ? undefined : rawCase;
 
 	const wantTidy =
-		ts?.tidyWrap ?? (role === 'headline' || role === 'deck' || role === 'body' ? true : false);
+		ts?.tidyWrap ??
+		(role === 'headline' || role === 'subhead' || role === 'deck' || role === 'body'
+			? true
+			: false);
 	const tidyWrap = wantTidy
 		? role === 'body' || role === 'blockquote' || role === 'caption'
 			? 'pretty'

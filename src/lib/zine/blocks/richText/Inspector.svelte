@@ -115,7 +115,7 @@
 			next.typeset = {
 				...(next.typeset ?? {}),
 				kind: 'content',
-				role: next.typeset?.role ?? defaultContentRole('richText')
+				role: next.typeset?.role ?? defaultContentRole('richText', draftDoc)
 			};
 		}
 		draftStyle = next;

@@ -52,6 +52,40 @@ function doc(...content: unknown[]) {
 	return { type: 'doc' as const, content };
 }
 
+type SampleTypesetRole =
+	| 'headline'
+	| 'subhead'
+	| 'kicker'
+	| 'deck'
+	| 'body'
+	| 'pullquote'
+	| 'blockquote'
+	| 'caption'
+	| 'byline';
+
+function contentStyle(
+	typeset: {
+		role?: SampleTypesetRole;
+		measure?: 'narrow' | 'medium' | 'wide';
+		leading?: 'tight' | 'cozy' | 'airy';
+		case?: 'normal' | 'upper' | 'smallcaps';
+		tidyWrap?: boolean;
+	} = {}
+) {
+	return { typeset: { kind: 'content' as const, ...typeset } };
+}
+
+function otherTextStyle() {
+	return { typeset: { kind: 'other' as const } };
+}
+
+function diagramLabelStyle() {
+	return {
+		...otherTextStyle(),
+		textBackdrop: { shape: 'box' as const, color: '#FFF3C4', opacity: 0.68, padding: 0.65 }
+	};
+}
+
 export const sampleZineMeta = {
 	user: 'riverwild',
 	slug: 'hidden-rivers-under-the-city',
@@ -94,12 +128,13 @@ export const sampleZineRaw: unknown = {
 								type: 'fly-in',
 								params: { speed: 'medium', direction: 'left' }
 							},
-							motion: { type: 'float', params: { speed: 'slow', amount: 'subtle' } },
 							block: {
 								id: 'blk_cover_heading',
-								type: 'heading',
-								props: { text: 'A suspiciously specific field guide to storm drains', level: 2 },
-								style: { align: 'center' }
+								type: 'richText',
+								props: {
+									doc: doc(paragraph(t('A suspiciously specific field guide to storm drains')))
+								},
+								style: { align: 'center', ...contentStyle({ role: 'deck', measure: 'wide' }) }
 							}
 						},
 						{
@@ -137,7 +172,8 @@ export const sampleZineRaw: unknown = {
 											'Write down time, depth, and smell before writing down your theory. The theory will try to get bossy.'
 										)
 									)
-								}
+								},
+								style: contentStyle({ role: 'body', measure: 'wide', leading: 'cozy' })
 							}
 						},
 						{
@@ -190,7 +226,8 @@ export const sampleZineRaw: unknown = {
 							block: {
 								id: 'blk_rain_heading',
 								type: 'heading',
-								props: { text: 'Minute 0-7: the pavement wakes up', level: 2 }
+								props: { text: 'Minute 0-7: the pavement wakes up', level: 2 },
+								style: contentStyle({ role: 'headline' })
 							}
 						},
 						{
@@ -201,7 +238,6 @@ export const sampleZineRaw: unknown = {
 								type: 'rise',
 								params: { speed: 'medium', amount: 'strong', direction: 'up' }
 							},
-							motion: { type: 'float', params: { speed: 'slow', amount: 'subtle' } },
 							block: {
 								id: 'blk_rain_text',
 								type: 'richText',
@@ -223,7 +259,8 @@ export const sampleZineRaw: unknown = {
 											)
 										)
 									)
-								}
+								},
+								style: contentStyle({ role: 'body', measure: 'medium', leading: 'cozy' })
 							}
 						}
 					]
@@ -256,7 +293,8 @@ export const sampleZineRaw: unknown = {
 							block: {
 								id: 'blk_measure_heading',
 								type: 'heading',
-								props: { text: 'A hydrograph, if you squint', level: 2 }
+								props: { text: 'A hydrograph, if you squint', level: 2 },
+								style: contentStyle({ role: 'headline' })
 							}
 						},
 						{
@@ -271,7 +309,8 @@ export const sampleZineRaw: unknown = {
 							block: {
 								id: 'blk_measure_first_flush',
 								type: 'heading',
-								props: { text: '1. First flush is not a metaphor', level: 3 }
+								props: { text: '1. First flush is not a metaphor', level: 3 },
+								style: contentStyle({ role: 'subhead' })
 							}
 						},
 						{
@@ -296,7 +335,8 @@ export const sampleZineRaw: unknown = {
 											)
 										)
 									)
-								}
+								},
+								style: contentStyle({ role: 'body', measure: 'medium', leading: 'cozy' })
 							}
 						},
 						{
@@ -311,7 +351,8 @@ export const sampleZineRaw: unknown = {
 							block: {
 								id: 'blk_measure_overflow',
 								type: 'heading',
-								props: { text: '2. The overflow window', level: 3 }
+								props: { text: '2. The overflow window', level: 3 },
+								style: contentStyle({ role: 'subhead' })
 							}
 						},
 						{
@@ -336,7 +377,8 @@ export const sampleZineRaw: unknown = {
 											)
 										)
 									)
-								}
+								},
+								style: contentStyle({ role: 'body', measure: 'medium', leading: 'cozy' })
 							}
 						},
 						{
@@ -350,16 +392,15 @@ export const sampleZineRaw: unknown = {
 								props: {
 									doc: doc(
 										paragraph(
-											t(
-												'By the next morning, the channel resumes its innocent expression. The evidence is small, durable, and excellent: '
-											),
+											t('The evidence is small, durable, and excellent: '),
 											t('a leaf line', [bold()]),
 											t(
-												', pea gravel sorted on the inside bend, a damp brick arch, and one new sandbar exactly where the outfall punches the current. You learn to read these leftovers the way a copy editor reads punctuation: not as decoration, but as where the sentence turns.'
+												', a damp brick arch, and one new sandbar exactly where the outfall punches the current.'
 											)
 										)
 									)
-								}
+								},
+								style: contentStyle({ role: 'pullquote', measure: 'narrow', leading: 'cozy' })
 							}
 						}
 					]
@@ -417,7 +458,8 @@ export const sampleZineRaw: unknown = {
 							block: {
 								id: 'blk_drop_level_title',
 								type: 'heading',
-								props: { text: 'Runoff as a very fussy side-scroller', level: 2 }
+								props: { text: 'Runoff as a very fussy side-scroller', level: 2 },
+								style: contentStyle({ role: 'headline' })
 							}
 						},
 						{
@@ -458,41 +500,53 @@ export const sampleZineRaw: unknown = {
 						{
 							id: 'el_drop_roof',
 							track: 'media',
+							placement: 'pinned',
+							anchor: { region: 'top-left', dx: 1, dy: 5 },
 							range: { start: 0.14, end: 0.24 },
 							block: {
 								id: 'blk_drop_roof',
-								type: 'heading',
-								props: { text: '75 mm green-roof tray', level: 3 }
+								type: 'richText',
+								props: { doc: doc(paragraph(t('75 mm green-roof tray', [bold()]))) },
+								style: diagramLabelStyle()
 							}
 						},
 						{
 							id: 'el_drop_grate',
 							track: 'media',
+							placement: 'pinned',
+							anchor: { region: 'top', dx: 0, dy: 5 },
 							range: { start: 0.36, end: 0.46 },
 							block: {
 								id: 'blk_drop_grate',
-								type: 'heading',
-								props: { text: 'curb-opening inlet', level: 3 }
+								type: 'richText',
+								props: { doc: doc(paragraph(t('curb-opening inlet', [bold()]))) },
+								style: diagramLabelStyle()
 							}
 						},
 						{
 							id: 'el_drop_pipe',
 							track: 'media',
+							placement: 'pinned',
+							anchor: { region: 'bottom', dx: 0, dy: -5 },
 							range: { start: 0.58, end: 0.68 },
 							block: {
 								id: 'blk_drop_pipe',
-								type: 'heading',
-								props: { text: '450 mm brick barrel', level: 3 }
+								type: 'richText',
+								props: { doc: doc(paragraph(t('450 mm brick barrel', [bold()]))) },
+								style: diagramLabelStyle()
 							}
 						},
 						{
 							id: 'el_drop_creek',
 							track: 'media',
+							placement: 'pinned',
+							anchor: { region: 'bottom-right', dx: -1, dy: -5 },
 							range: { start: 0.82, end: 0.92 },
 							block: {
 								id: 'blk_drop_creek',
-								type: 'heading',
-								props: { text: 'daylighted riffle', level: 3 }
+								type: 'richText',
+								props: { doc: doc(paragraph(t('daylighted riffle', [bold()]))) },
+								style: diagramLabelStyle()
 							}
 						},
 						{
@@ -636,7 +690,8 @@ export const sampleZineRaw: unknown = {
 							block: {
 								id: 'blk_daylight_heading',
 								type: 'heading',
-								props: { text: 'Daylighting is not just creek fan service', level: 2 }
+								props: { text: 'Daylighting is not just creek fan service', level: 2 },
+								style: contentStyle({ role: 'headline' })
 							}
 						},
 						{
@@ -669,7 +724,8 @@ export const sampleZineRaw: unknown = {
 											)
 										)
 									)
-								}
+								},
+								style: contentStyle({ role: 'body', measure: 'medium', leading: 'cozy' })
 							}
 						}
 					]
@@ -699,7 +755,8 @@ export const sampleZineRaw: unknown = {
 							block: {
 								id: 'blk_field_heading',
 								type: 'heading',
-								props: { text: 'Field kit for the hydrology person you are becoming', level: 2 }
+								props: { text: 'Field kit for the hydrology person you are becoming', level: 2 },
+								style: contentStyle({ role: 'headline', measure: 'wide' })
 							}
 						},
 						{
@@ -740,7 +797,8 @@ export const sampleZineRaw: unknown = {
 											)
 										)
 									)
-								}
+								},
+								style: contentStyle({ role: 'body', measure: 'medium', leading: 'cozy' })
 							}
 						},
 						{

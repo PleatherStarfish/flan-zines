@@ -14,6 +14,7 @@
 	let {
 		blockId,
 		blockType,
+		blockProps,
 		label,
 		style,
 		textKind,
@@ -24,6 +25,7 @@
 	}: {
 		blockId?: string;
 		blockType?: string;
+		blockProps?: unknown;
 		label?: string;
 		style?: BlockStyle;
 		textKind?: TextKind;
@@ -39,7 +41,7 @@
 	const textBackdrop = $derived(style?.textBackdrop);
 	const textColor = $derived(style?.textColor);
 	// Editorial typeset resolved to concrete, bounded values (measure/leading/case/align/wrap).
-	const typeset = $derived(resolveTypeset(style, blockType, textKind));
+	const typeset = $derived(resolveTypeset(style, blockType, textKind, blockProps));
 	const frameStyle = $derived.by(() => {
 		const parts: string[] = [];
 		if (timelineStyle) parts.push(timelineStyle);

@@ -32,11 +32,16 @@
 
 	const typeset = $derived(style?.typeset);
 	const effectiveRole = $derived<TypesetRole | undefined>(
-		textKind === 'content' ? (typeset?.role ?? defaultContentRole(block.type)) : undefined
+		textKind === 'content'
+			? (typeset?.role ?? defaultContentRole(block.type, block.props))
+			: undefined
 	);
 	const tidyOn = $derived(
 		typeset?.tidyWrap ??
-			(effectiveRole === 'headline' || effectiveRole === 'deck' || effectiveRole === 'body')
+			(effectiveRole === 'headline' ||
+				effectiveRole === 'subhead' ||
+				effectiveRole === 'deck' ||
+				effectiveRole === 'body')
 	);
 	const backdrop = $derived(style?.textBackdrop);
 	const themeColors = $derived(resolveThemeColors(theme));
@@ -54,6 +59,7 @@
 
 	const roleLabels: Record<TypesetRole, string> = {
 		headline: 'Headline',
+		subhead: 'Section heading',
 		kicker: 'Tiny label',
 		deck: 'Intro',
 		body: 'Body',
@@ -64,7 +70,7 @@
 	};
 	const roleOptions = $derived<TypesetRole[]>(
 		block.type === 'heading'
-			? ['headline', 'kicker', 'deck']
+			? ['headline', 'subhead', 'kicker', 'deck']
 			: block.type === 'richText'
 				? ['deck', 'body', 'pullquote', 'blockquote', 'caption', 'byline']
 				: []
@@ -216,7 +222,12 @@
 		if (role === 'deck' || role === 'blockquote' || role === 'caption' || role === 'byline') {
 			return colors.muted;
 		}
-		if (role === 'headline' || role === 'pullquote' || blockType === 'heading') {
+		if (
+			role === 'headline' ||
+			role === 'subhead' ||
+			role === 'pullquote' ||
+			blockType === 'heading'
+		) {
 			return colors.heading;
 		}
 		return colors.text;

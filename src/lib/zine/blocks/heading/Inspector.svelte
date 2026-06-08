@@ -79,7 +79,7 @@
 			next.typeset = {
 				...(next.typeset ?? {}),
 				kind: 'content',
-				role: next.typeset?.role ?? defaultContentRole('heading')
+				role: next.typeset?.role ?? defaultContentRole('heading', draft)
 			};
 		}
 		draftStyle = next;
