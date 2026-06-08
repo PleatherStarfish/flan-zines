@@ -302,15 +302,30 @@
 	// sprite; `pinned` = content anchored to a screen region. Under reduced motion, narrow/short
 	// viewports, or a measured over-tall scene, everything falls back to normal in-flow
 	// source order (fully readable, no overlay).
-	function freeElementsFor(scene: Scene): Element[] {
-		return isStackedScene(scene)
-			? []
-			: scene.elements.filter((element) => element.placement === 'free');
+	function isBackgroundStageElement(element: Element): boolean {
+		return element.track === 'background';
 	}
-	function pinnedElementsFor(scene: Scene): Element[] {
+	function freeElementsFor(scene: Scene, plane: 'background' | 'foreground'): Element[] {
 		return isStackedScene(scene)
 			? []
-			: scene.elements.filter((element) => element.placement === 'pinned');
+			: scene.elements.filter(
+					(element) =>
+						element.placement === 'free' &&
+						(plane === 'background'
+							? isBackgroundStageElement(element)
+							: !isBackgroundStageElement(element))
+				);
+	}
+	function pinnedElementsFor(scene: Scene, plane: 'background' | 'foreground'): Element[] {
+		return isStackedScene(scene)
+			? []
+			: scene.elements.filter(
+					(element) =>
+						element.placement === 'pinned' &&
+						(plane === 'background'
+							? isBackgroundStageElement(element)
+							: !isBackgroundStageElement(element))
+				);
 	}
 	function flowElementsFor(scene: Scene): Element[] {
 		if (isStackedScene(scene)) return scene.elements; // readable source order
@@ -459,8 +474,10 @@
 				{@const stacked = isStackedScene(scene)}
 				{@const horizontal = isHorizontal(scene)}
 				{@const flowElements = flowElementsFor(scene)}
-				{@const freeElements = freeElementsFor(scene)}
-				{@const pinnedElements = pinnedElementsFor(scene)}
+				{@const backgroundFreeElements = freeElementsFor(scene, 'background')}
+				{@const backgroundPinnedElements = pinnedElementsFor(scene, 'background')}
+				{@const foregroundFreeElements = freeElementsFor(scene, 'foreground')}
+				{@const foregroundPinnedElements = pinnedElementsFor(scene, 'foreground')}
 				<section
 					class="zine-scene"
 					data-type={scene.type}
@@ -487,7 +504,10 @@
 						class="zine-scene__inner"
 						class:is-pinned={isPinned(scene)}
 						class:is-horizontal={horizontal}
-						class:has-free={freeElements.length > 0 || pinnedElements.length > 0}
+						class:has-free={backgroundFreeElements.length > 0 ||
+							backgroundPinnedElements.length > 0 ||
+							foregroundFreeElements.length > 0 ||
+							foregroundPinnedElements.length > 0}
 					>
 						{#if horizontal}
 							<div class="zine-stage" style={stageStyle(scene, progress)}>
@@ -553,14 +573,13 @@
 							{/each}
 						{/if}
 
-						{#if freeElements.length || pinnedElements.length}
-							<!-- The stage overlay: a viewport-fixed layer (a `size` container so a path's
-							     cqw/cqh resolve to viewport %), a SIBLING of any side-scroll stage so its
-							     actors stay put while a level pans. `free` sprites are positioned by their
-							     `path`; `pinned` content is positioned by its `data-region` anchor. Under
-							     reduced motion / narrow they lay out in flow above (so this is empty). -->
-							<div class="zine-stage-overlay">
-								{#each freeElements as element (element.id)}
+						{#if backgroundFreeElements.length || backgroundPinnedElements.length}
+							<!-- Backdrop layer plane: stage actors behind the story content. It is still a
+							     sibling of the panning side-scroll stage, so pinned `range` keeps timeline
+							     semantics instead of becoming horizontal track position. In CSS-first
+							     stacked fallbacks it comes after the prose, preserving readability. -->
+							<div class="zine-stage-overlay zine-stage-overlay--back">
+								{#each backgroundFreeElements as element (element.id)}
 									{@const def = getBlock(element.block.type)}
 									{@const timeline = composeElementStyle(element, progress, impls, {
 										reducedMotion: rm
@@ -589,7 +608,74 @@
 										</div>
 									{/if}
 								{/each}
-								{#each pinnedElements as element (element.id)}
+								{#each backgroundPinnedElements as element (element.id)}
+									{@const def = getBlock(element.block.type)}
+									{@const timeline = composeElementStyle(element, progress, impls, {
+										reducedMotion: rm
+									})}
+									{#if def}
+										{@const Render = def.Render}
+										<div
+											class="zine-pinned-actor"
+											data-track={element.track}
+											data-block-type={element.block.type}
+											data-region={pinRegion(element.anchor)}
+											inert={timeline.hidden || undefined}
+											aria-hidden={timeline.hidden || undefined}
+											style={pinnedActorStyle(scene, element)}
+										>
+											<BlockFrame
+												blockId={element.id}
+												blockType={element.block.type}
+												blockProps={element.block.props}
+												label={def.label}
+												style={element.block.style}
+												textKind={textKindForElement(element)}
+												animation={element.legacyAnimation}
+												timelineStyle={timeline.style || undefined}
+												timelineActive={timeline.active}
+											>
+												<Render props={element.block.props} />
+											</BlockFrame>
+										</div>
+									{/if}
+								{/each}
+							</div>
+						{/if}
+
+						{#if foregroundFreeElements.length || foregroundPinnedElements.length}
+							<!-- Foreground stage plane: free sprites and pinned labels above the story. -->
+							<div class="zine-stage-overlay zine-stage-overlay--front">
+								{#each foregroundFreeElements as element (element.id)}
+									{@const def = getBlock(element.block.type)}
+									{@const timeline = composeElementStyle(element, progress, impls, {
+										reducedMotion: rm
+									})}
+									{#if def}
+										{@const Render = def.Render}
+										<div
+											class="zine-free-actor"
+											data-track={element.track}
+											data-block-type={element.block.type}
+											style={flowActorStyle(scene, element)}
+										>
+											<BlockFrame
+												blockId={element.id}
+												blockType={element.block.type}
+												blockProps={element.block.props}
+												label={def.label}
+												style={element.block.style}
+												textKind={textKindForElement(element)}
+												animation={element.legacyAnimation}
+												timelineStyle={timeline.style || undefined}
+												timelineActive={timeline.active}
+											>
+												<Render props={element.block.props} />
+											</BlockFrame>
+										</div>
+									{/if}
+								{/each}
+								{#each foregroundPinnedElements as element (element.id)}
 									{@const def = getBlock(element.block.type)}
 									<!-- Pinned actors compose with TIMELINE semantics (no axis), so `range` is
 									     an enter/exit window even in horizontal scenes. -->
@@ -736,6 +822,7 @@
 	.zine-scene__inner {
 		position: relative;
 		z-index: 1;
+		isolation: isolate;
 	}
 	.zine-flow-actor {
 		position: relative;
@@ -780,6 +867,7 @@
 	}
 	.zine-stage {
 		position: absolute;
+		z-index: 10;
 		top: 0;
 		bottom: 0;
 		left: 0;
@@ -806,6 +894,12 @@
 		container-type: size;
 		overflow: hidden;
 		pointer-events: none;
+	}
+	.zine-stage-overlay--back {
+		z-index: 0;
+	}
+	.zine-stage-overlay--front {
+		z-index: 1000;
 	}
 	.zine-free-actor {
 		position: absolute;
@@ -877,11 +971,21 @@
 	}
 	.zine-pinned-actor[data-track='background'] {
 		pointer-events: none;
+		max-inline-size: min(88cqw, 62rem);
+		opacity: 0.86;
 	}
 	.zine-pinned-actor :global(.zine-block) {
 		max-width: 100%;
 		margin: 0;
 		padding: 0;
+	}
+	.zine-pinned-actor[data-track='background'] :global(.zine-image) {
+		width: auto;
+	}
+	.zine-pinned-actor[data-track='background'] :global(.zine-image img) {
+		width: min(88cqw, 62rem);
+		max-height: 72cqh;
+		object-fit: contain;
 	}
 	.zine-pinned-actor[data-region='top-left'] {
 		top: calc(var(--pin-g) + env(safe-area-inset-top, 0px));

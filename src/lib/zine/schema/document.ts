@@ -249,6 +249,30 @@ export const ElementSchema = z.object({
 });
 export type Element = z.infer<typeof ElementSchema>;
 
+export const PINNED_MOTION_EFFECTS = ['parallax'] as const;
+export type PinnedMotionEffect = (typeof PINNED_MOTION_EFFECTS)[number];
+
+function isPinnedMotionEffect(type: string): type is PinnedMotionEffect {
+	return (PINNED_MOTION_EFFECTS as readonly string[]).includes(type);
+}
+
+/**
+ * Pinned sustained motion is intentionally narrow: only background-track actors may drift
+ * behind the story text, and v1 only allows the transform-only parallax effect.
+ */
+export function pinnedMotionProblem(
+	element: Pick<Element, 'placement' | 'track' | 'motion'>
+): string | null {
+	if (element.placement !== 'pinned' || !element.motion) return null;
+	if (element.track !== 'background') {
+		return 'Pinned sustained motion is only allowed for background layers.';
+	}
+	if (!isPinnedMotionEffect(element.motion.type)) {
+		return 'Pinned background layers can only use parallax motion.';
+	}
+	return null;
+}
+
 export const SceneSchema = z
 	.object({
 		id: z.string().min(1),
@@ -305,11 +329,12 @@ export const SceneSchema = z
 					message: 'anchorBeat must reference a beat in the same scene.'
 				});
 			}
-			if (element.placement === 'pinned' && element.motion) {
+			const motionProblem = pinnedMotionProblem(element);
+			if (motionProblem) {
 				ctx.addIssue({
 					code: 'custom',
 					path: ['elements', i, 'motion'],
-					message: 'Pinned elements cannot use sustained motion in v1.'
+					message: motionProblem
 				});
 			}
 			if (

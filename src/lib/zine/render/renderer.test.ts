@@ -228,6 +228,143 @@ describe('ZineRenderer', () => {
 		unmount();
 	});
 
+	it('renders pinned background parallax in a behind-content stage plane', async () => {
+		const document = parseDocument({
+			schemaVersion: 7,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'reveal',
+							length: 'auto',
+							scrollLength: 4,
+							beats: [{ id: 'b', at: 0 }],
+							elements: [
+								{
+									id: 'backdrop',
+									track: 'background',
+									placement: 'pinned',
+									anchor: { region: 'center', dx: 0, dy: 0 },
+									range: { start: 0, end: 1 },
+									motion: {
+										type: 'parallax',
+										params: { speed: 'slow', amount: 'subtle', direction: 'up' }
+									},
+									block: {
+										id: 'backdrop_blk',
+										type: 'image',
+										props: { src: '/backdrop.svg', alt: 'layered backdrop' }
+									}
+								},
+								{
+									id: 'words',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'words_blk',
+										type: 'heading',
+										props: { text: 'Story text stays above', level: 2 }
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		}) satisfies ZineDocument;
+
+		const { container } = render(ZineRenderer, {
+			props: { document, sceneProgress: { scn: 0.25 } }
+		});
+		const backPlane = container.querySelector('.zine-stage-overlay--back');
+		const frontPlane = container.querySelector('.zine-stage-overlay--front');
+		const actor = container.querySelector('.zine-stage-overlay--back .zine-pinned-actor');
+		const content = container.querySelector('.zine-flow-actor[data-track="content"]');
+		expect(backPlane).toBeTruthy();
+		expect(frontPlane).toBeNull();
+		expect(actor?.getAttribute('data-track')).toBe('background');
+		expect(actor?.getAttribute('data-region')).toBe('center');
+		expect(actor?.getAttribute('style')).not.toMatch(/left:/);
+		expect(
+			(content as HTMLElement).compareDocumentPosition(backPlane as HTMLElement) &
+				Node.DOCUMENT_POSITION_FOLLOWING
+		).toBeTruthy();
+		await waitFor(() => {
+			expect(
+				container
+					.querySelector('.zine-stage-overlay--back .zine-pinned-actor .zine-block')
+					?.getAttribute('style')
+			).toMatch(/transform:\s*translateY\(-6\.00px\)/);
+		});
+	});
+
+	it('keeps horizontal pinned background layers out of track positioning', async () => {
+		const document = parseDocument({
+			schemaVersion: 7,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'sidescroll',
+							length: 'auto',
+							scrollAxis: 'horizontal',
+							scrollLength: 5,
+							beats: [{ id: 'b', at: 0 }],
+							elements: [
+								{
+									id: 'cloud',
+									track: 'background',
+									placement: 'pinned',
+									anchor: { region: 'top', dx: 0, dy: 0 },
+									range: { start: 0.2, end: 0.8 },
+									motion: {
+										type: 'parallax',
+										params: { speed: 'slow', amount: 'subtle', direction: 'up' }
+									},
+									block: {
+										id: 'cloud_blk',
+										type: 'image',
+										props: { src: '/cloud.svg', alt: 'cloud layer' }
+									}
+								},
+								{
+									id: 'platform',
+									track: 'media',
+									range: { start: 0.65, end: 0.8 },
+									block: {
+										id: 'platform_blk',
+										type: 'heading',
+										props: { text: 'Track actor', level: 2 }
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		}) satisfies ZineDocument;
+
+		const { container } = render(ZineRenderer, {
+			props: { document, sceneProgress: { scn: 0.5 } }
+		});
+		expect(container.querySelector('.zine-stage')?.getAttribute('style')).toMatch(/width:\s*500%/);
+		const pinned = container.querySelector('.zine-stage-overlay--back .zine-pinned-actor');
+		expect(pinned).toBeTruthy();
+		expect(pinned?.closest('.zine-stage')).toBeNull();
+		expect(pinned?.getAttribute('style')).not.toMatch(/left:\s*20/);
+		await waitFor(() => {
+			expect(
+				container
+					.querySelector('.zine-stage-overlay--back .zine-pinned-actor .zine-block')
+					?.getAttribute('style')
+			).toMatch(/opacity:\s*1\b/);
+		});
+	});
+
 	it('renders text blocks without backdrops by default, with explicit tight readability backdrops', () => {
 		const document = parseDocument({
 			schemaVersion: 7,

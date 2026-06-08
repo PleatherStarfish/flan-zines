@@ -43,10 +43,14 @@
 		linkButton: 'Link',
 		spacer: 'Pause'
 	};
-	const addChoices: { label: string; type: string; track: ElementTrack }[] = [
+	type AddChoice =
+		| { label: string; type: string; track: ElementTrack; action?: undefined }
+		| { label: string; action: 'backdrop'; type?: undefined; track?: undefined };
+	const addChoices: AddChoice[] = [
 		{ label: 'Title', type: 'heading', track: 'content' },
 		{ label: 'Words', type: 'richText', track: 'content' },
 		{ label: 'Picture', type: 'image', track: 'media' },
+		{ label: 'Backdrop', action: 'backdrop' },
 		{ label: 'Link', type: 'linkButton', track: 'content' },
 		{ label: 'Pause', type: 'spacer', track: 'content' }
 	];
@@ -105,8 +109,12 @@
 	const lanes = $derived(scene.elements);
 	const laneCount = $derived(lanes.length);
 
-	function addClip(type: string, track: ElementTrack): void {
-		store.addElementAt(scene.id, type, track, scrub);
+	function addClip(choice: AddChoice): void {
+		if (choice.action === 'backdrop') {
+			store.addBackdropLayer(scene.id);
+			return;
+		}
+		store.addElementAt(scene.id, choice.type, choice.track, scrub);
 	}
 
 	function addMoment(): void {
@@ -492,7 +500,13 @@
 		<div class="timeline-toolbar">
 			<span class="timeline-toolbar__label">Add</span>
 			{#each addChoices as choice (choice.label)}
-				<button type="button" onclick={() => addClip(choice.type, choice.track)}>
+				<button
+					type="button"
+					title={choice.action === 'backdrop'
+						? 'Picture behind the text that drifts as readers scroll'
+						: undefined}
+					onclick={() => addClip(choice)}
+				>
 					{choice.label}
 				</button>
 			{/each}

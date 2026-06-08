@@ -26,9 +26,15 @@
 	const anyOptions = $derived(sections.some((section) => optionsFor(section).length > 0));
 
 	function optionsFor(section: SlotSection): AnyAnimationDef[] {
-		if (element.placement === 'pinned' && section.slot === 'motion') return [];
 		if (textKind === 'content' && section.slot === 'motion') return [];
-		return effectsForSlot(section.slot, section.group).filter((def) => allowed.has(def.type));
+		const options = effectsForSlot(section.slot, section.group).filter((def) =>
+			allowed.has(def.type)
+		);
+		if (element.placement === 'pinned' && section.slot === 'motion') {
+			if (element.track !== 'background') return [];
+			return options.filter((def) => def.type === 'parallax');
+		}
+		return options;
 	}
 
 	function currentType(slot: EffectSlot): string | null {
@@ -38,7 +44,22 @@
 	function activeLabel(slot: EffectSlot, options: AnyAnimationDef[]): string {
 		const active = currentType(slot);
 		if (!active) return 'None';
+		if (slot === 'motion' && active === 'parallax' && element.placement === 'pinned') {
+			const direction = element.motion?.params?.direction === 'down' ? 'down' : 'up';
+			return `Drift ${direction}`;
+		}
 		return options.find((def) => def.type === active)?.label ?? getEffect(active)?.label ?? active;
+	}
+
+	function sectionTitle(section: SlotSection): string {
+		if (
+			section.slot === 'motion' &&
+			element.placement === 'pinned' &&
+			element.track === 'background'
+		) {
+			return 'Backdrop drift';
+		}
+		return section.title;
 	}
 
 	function knobValue(slot: EffectSlot, def: AnyAnimationDef, key: string): string {
@@ -107,7 +128,7 @@
 				{@const def = active ? options.find((option) => option.type === active) : undefined}
 				<details class="slot" open={Boolean(active)}>
 					<summary>
-						<span>{section.title}</span>
+						<span>{sectionTitle(section)}</span>
 						<strong>{activeLabel(section.slot, options)}</strong>
 					</summary>
 

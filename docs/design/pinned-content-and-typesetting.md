@@ -1,6 +1,6 @@
 # Proposal: Pinned placement + editorial typesetting
 
-Status: **v1 IMPLEMENTED** (schema v6) · revision 4 · Owner: editor team
+Status: **v1 IMPLEMENTED** (schema v7) · revision 5 · Owner: editor team
 
 > **Implemented (v1):** schema v6 (`placement:'pinned'` + `Element.anchor`; `BlockStyle.typeset`
 >
@@ -12,8 +12,15 @@ Status: **v1 IMPLEMENTED** (schema v6) · revision 4 · Owner: editor team
 >   `setTextKind`, `setTypeset`/`setTypesetRole`, `addPinnedText` with page→reveal promotion,
 >   `canPin`); publish gate for interactive/over-long pinned actors; editor `BlockInspector`
 >   "Text kind" + Content text style controls + `PlacementPicker` only for Other text/non-text.
->   **Deferred to v2** (as planned): drop caps, columns, true hanging punctuation, pinned
->   sustained motion (`float`/`parallax`).
+>   **Implemented after v1 lock:** DAW `Backdrop` rows, rendered as background-track pinned
+>   actors behind content, may use the guarded `parallax` motion slot. **Deferred to v2** (as
+>   planned): drop caps, columns, true hanging punctuation, other pinned sustained motion
+>   (`float`, foreground `parallax`, path-on-pinned).
+
+> **Rev 5 changelog:** Added the “behind text drift” exception requested by the editor UX:
+> `track:'background'` + `placement:'pinned'` + `motion:{ type:'parallax' }`. The renderer
+> splits stage actors into a behind-content plane and a foreground plane; the DAW remains the
+> only layer model. Content text and interactive/over-long pinned actors keep the v1 guards.
 
 > **Rev 4 changelog:** Reframed text around the actual author decision: **Content text** vs
 > **Other text**. Content text gets prescriptive editorial typesetting defaults and cannot use
@@ -196,11 +203,13 @@ calc(100% - 2*var(--g)))` and `max-block-size: calc(100svh - 2*var(--g))` — so
   slide, pop, and fly-in run through the unchanged `composeElementStyle` and apply
   transform/opacity to the `.zine-block` child — kept separate from the wrapper's anchor
   transform + nudge, so there is no collision. A pinned block can fade/animate _in_ near
-  `range.start` and _out_ near `range.end`, holding through the middle. What v1 defers is only
-  the sustained **`motion` slot** on pinned: `path` is disallowed (free-sprite only) and
-  `float`/`parallax`-on-pinned wait for v2. (Caveat: the overlay is `overflow:hidden`, so the
-  very start of a dramatic _off-screen_ fly-in at an edge-anchored region can clip — same as
-  free sprites today; fade/rise/pop/short-slide are unaffected and always resolve to the
+  `range.start` and _out_ near `range.end`, holding through the middle. Sustained **`motion`**
+  on pinned actors remains deferred except for one guarded case: a **background-track pinned
+  actor** may use `parallax` so a picture/object behind text can drift subtly as the reader
+  scrolls. `path` is still disallowed on pinned actors (free-sprite only), and foreground
+  pinned actors cannot use `float`/`parallax`. (Caveat: the overlay is `overflow:hidden`, so
+  the very start of a dramatic _off-screen_ fly-in at an edge-anchored region can clip — same
+  as free sprites today; fade/rise/pop/short-slide are unaffected and always resolve to the
   visible anchored position.)
 - **No interactive pinned actors in v1.** This is not just the `linkButton` block — it
   includes a `richText` block that contains a **link mark**. The editor refuses to pin (and a
@@ -309,7 +318,8 @@ line-height:0.82; margin:0.02em 0.1em 0 0; }`. Fallback: unsupported `::first-le
 - **Columns** — CSS multi-column is awkward inside scroll stories; deferred until there's a
   clear need.
 - **True hanging punctuation** — `@supports (hanging-punctuation: first)` enhancement.
-- **Pinned motion** — `float`/`parallax` on a pinned actor.
+- **Pinned foreground motion** — `float`/foreground `parallax` on a pinned actor; background
+  parallax is already implemented as the guarded Backdrop layer case.
 
 ---
 

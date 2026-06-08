@@ -327,7 +327,7 @@ describe('document schema', () => {
 		expect(publishBlockers(doc).some((b) => /short enough/i.test(b))).toBe(true);
 	});
 
-	it('rejects sustained motion on a pinned actor', () => {
+	it('rejects sustained motion on ordinary pinned actors', () => {
 		const result = safeParseDocument({
 			schemaVersion: 7,
 			acts: [
@@ -360,7 +360,88 @@ describe('document schema', () => {
 			]
 		});
 		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.error.message).toMatch(/sustained motion/i);
+		if (!result.ok) expect(result.error.message).toMatch(/background layers/i);
+	});
+
+	it('accepts parallax motion on a pinned background layer', () => {
+		const result = safeParseDocument({
+			schemaVersion: 7,
+			acts: [
+				{
+					id: 'act_1',
+					scenes: [
+						{
+							id: 'scn_1',
+							type: 'reveal',
+							length: 'long',
+							beats: [{ id: 'beat_1', at: 0 }],
+							elements: [
+								{
+									id: 'el_1',
+									track: 'background',
+									placement: 'pinned',
+									anchor: { region: 'center', dx: 0, dy: 0 },
+									range: { start: 0, end: 1 },
+									motion: {
+										type: 'parallax',
+										params: { speed: 'slow', amount: 'subtle', direction: 'up' }
+									},
+									block: {
+										id: 'blk_1',
+										type: 'image',
+										props: { src: '/x.svg', alt: 'example' }
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			const motion = result.document.acts[0].scenes[0].elements[0].motion;
+			expect(motion).toMatchObject({
+				type: 'parallax',
+				params: { speed: 'slow', amount: 'subtle', direction: 'up' }
+			});
+		}
+	});
+
+	it('rejects non-parallax motion on a pinned background layer', () => {
+		const result = safeParseDocument({
+			schemaVersion: 7,
+			acts: [
+				{
+					id: 'act_1',
+					scenes: [
+						{
+							id: 'scn_1',
+							type: 'reveal',
+							length: 'long',
+							beats: [{ id: 'beat_1', at: 0 }],
+							elements: [
+								{
+									id: 'el_1',
+									track: 'background',
+									placement: 'pinned',
+									anchor: { region: 'center', dx: 0, dy: 0 },
+									range: { start: 0, end: 1 },
+									motion: { type: 'float', params: {} },
+									block: {
+										id: 'blk_1',
+										type: 'image',
+										props: { src: '/x.svg', alt: 'example' }
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.message).toMatch(/only use parallax/i);
 	});
 
 	it('rejects explicit content text with placement choreography', () => {

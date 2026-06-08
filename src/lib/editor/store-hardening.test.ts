@@ -97,6 +97,18 @@ describe('path + placement intents keep the document valid', () => {
 		expect(el.placement).toBeUndefined();
 		expect(el.motion?.type).not.toBe('path');
 	});
+
+	it('addBackdropLayer produces a valid pinned background parallax actor', () => {
+		store = makeStore();
+		const sceneId = store.addScene('act_1', 'reveal');
+		const id = store.addBackdropLayer(sceneId)!;
+		const el = reparse(store)
+			.acts[0].scenes.find((s) => s.id === sceneId)!
+			.elements.find((e) => e.id === id)!;
+		expect(el.track).toBe('background');
+		expect(el.placement).toBe('pinned');
+		expect(el.motion?.type).toBe('parallax');
+	});
 });
 
 describe('theme intents keep the document valid + undo round-trips', () => {

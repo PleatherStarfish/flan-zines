@@ -17,6 +17,7 @@ import type {
 	SceneType,
 	ZineDocument
 } from '$lib/zine/schema/document';
+import { pinnedMotionProblem } from '$lib/zine/schema/document';
 import { PathParamsSchema, type Waypoint } from '$lib/zine/animations/path';
 import { parseDocument } from '$lib/zine/schema/migrate';
 import { BlockStyleSchema, type BlockStyle, type SectionKind } from '$lib/zine/schema/theme';
@@ -44,6 +45,7 @@ type StarterBlock = {
 	track?: ElementTrack;
 	placement?: ElementPlacement;
 	motion?: EffectRef;
+	anchor?: Element['anchor'];
 	range?: Element['range'];
 };
 
@@ -425,7 +427,9 @@ export class EditorStore {
 	updateElementTrack(elementId: string, track: ElementTrack): void {
 		this.mutate((draft) => {
 			const element = findElement(draft, elementId)?.element;
-			if (element) element.track = track;
+			if (!element) return;
+			element.track = track;
+			if (pinnedMotionProblem(element)) delete element.motion;
 		});
 	}
 	updateElementStyle(elementId: string, style: BlockStyle): void {
@@ -466,7 +470,12 @@ export class EditorStore {
 			const element = findElement(draft, elementId)?.element;
 			if (!element) return;
 			if (slot === 'motion' && element.placement === 'pinned') {
-				if (!ref) delete element.motion;
+				if (!ref) {
+					delete element.motion;
+					return;
+				}
+				if (pinnedMotionProblem({ ...element, motion: ref })) return;
+				element.motion = ref;
 				return;
 			}
 			if (slot === 'motion' && ref && textKindForElement(element) === 'content') {
@@ -603,6 +612,38 @@ export class EditorStore {
 		this.selectedId = id;
 		return id;
 	}
+
+	/** Add a behind-the-text picture layer that stays pinned and drifts subtly as the reader
+	 *  scrolls. This reuses the DAW row model: it is just a background-track pinned clip with
+	 *  the safe parallax motion already chosen. */
+	addBackdropLayer(sceneId: string): string | null {
+		const id = newElementId();
+		const blockId = newBlockId();
+		this.mutate((draft) => {
+			const scene = findScene(draft, sceneId)?.scene;
+			if (!scene) return;
+			promoteSceneForPinned(scene);
+			scene.elements.push({
+				id,
+				track: 'background',
+				block: {
+					id: blockId,
+					type: 'image',
+					props: { src: '/zine-sample.svg', alt: '' }
+				} as Block,
+				range: { start: 0, end: 1 },
+				placement: 'pinned',
+				anchor: { region: 'center', dx: 0, dy: 0 },
+				motion: {
+					type: 'parallax',
+					params: { speed: 'slow', amount: 'subtle', direction: 'up' }
+				}
+			});
+		});
+		this.selectedId = id;
+		return id;
+	}
+
 	/** Make an element a free sprite that follows `waypoints` on scroll (the `path` motion). */
 	setElementPath(elementId: string, waypoints: Waypoint[]): void {
 		const parsed = PathParamsSchema.safeParse({ waypoints });
@@ -881,8 +922,9 @@ function pinElement(scene: Scene, element: Element): boolean {
 	promoteSceneForPinned(scene);
 	element.placement = 'pinned';
 	if (!element.anchor) element.anchor = { region: 'center', dx: 0, dy: 0 };
-	// v1 pinned actors may enter/exit, but they do not run sustained motion while held.
-	delete element.motion;
+	// Pinned labels still do not run sustained motion. The one allowed exception is a
+	// background-track parallax layer behind the story text.
+	if (pinnedMotionProblem(element)) delete element.motion;
 	return true;
 }
 
@@ -945,6 +987,7 @@ function createElementFromStarter(starter: StarterBlock): Element | null {
 		} as Block,
 		range: starter.range ?? { start: 0, end: 1 },
 		...(starter.placement ? { placement: starter.placement } : {}),
+		...(starter.anchor ? { anchor: structuredClone(starter.anchor) } : {}),
 		...(starter.motion ? { motion: starter.motion } : {})
 	};
 }

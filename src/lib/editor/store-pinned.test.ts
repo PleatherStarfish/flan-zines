@@ -104,14 +104,44 @@ describe('pinned placement intents', () => {
 		expect(el(store, id).anchor).toBeUndefined();
 	});
 
-	it('does not allow sustained motion on a pinned actor', () => {
+	it('only allows sustained motion for pinned background parallax layers', () => {
 		store = makeStore();
 		const id = store.addElement('scn_1', 'image')!;
 		store.setElementPlacement(id, 'pinned');
 		store.setElementEffect(id, 'motion', { type: 'float', params: { distance: 'small' } });
 		expect(el(store, id).motion).toBeUndefined();
+		store.updateElementTrack(id, 'background');
+		store.setElementEffect(id, 'motion', {
+			type: 'parallax',
+			params: { speed: 'slow', amount: 'subtle', direction: 'up' }
+		});
+		expect(el(store, id).motion).toMatchObject({
+			type: 'parallax',
+			params: { speed: 'slow', amount: 'subtle', direction: 'up' }
+		});
+		store.updateElementTrack(id, 'media');
+		expect(el(store, id).motion).toBeUndefined();
 		store.setElementEffect(id, 'enter', { type: 'fade', params: { direction: 'in' } });
 		expect(el(store, id).enter?.type).toBe('fade');
+	});
+
+	it('adds a backdrop layer as a pinned background image with slow parallax', () => {
+		store = makeStore();
+		const id = store.addBackdropLayer('scn_1')!;
+		expect(scene(store).type).toBe('reveal');
+		expect(scene(store).length).toBe('long');
+		expect(el(store, id)).toMatchObject({
+			track: 'background',
+			placement: 'pinned',
+			anchor: { region: 'center', dx: 0, dy: 0 },
+			range: { start: 0, end: 1 },
+			motion: {
+				type: 'parallax',
+				params: { speed: 'slow', amount: 'subtle', direction: 'up' }
+			},
+			block: { type: 'image' }
+		});
+		expect(store.selectedId).toBe(id);
 	});
 
 	it('clears stale anchors when path motion makes a pinned element free', () => {
