@@ -22,6 +22,10 @@
 	});
 	const placement = $derived(live.placement ?? 'flow');
 	const textKind = $derived(textKindForElement(live));
+	const speechFrame = $derived(
+		live.block.style?.textFrame?.kind === 'speech' ? live.block.style.textFrame : undefined
+	);
+	const hasSpeechTarget = $derived(Boolean(speechFrame?.speakerElementId));
 	const region = $derived(live.anchor?.region ?? 'center');
 	const nudged = $derived((live.anchor?.dx ?? 0) !== 0 || (live.anchor?.dy ?? 0) !== 0);
 	const canPin = $derived(store.canPin(element.id));
@@ -41,7 +45,13 @@
 
 <section class="placement" aria-label="Placement">
 	<div class="intro">
-		<h3>{textKind === 'other' ? 'Place other text' : 'Place on screen'}</h3>
+		<h3>
+			{hasSpeechTarget
+				? 'Place bubble'
+				: textKind === 'other'
+					? 'Place other text'
+					: 'Place on screen'}
+		</h3>
 	</div>
 
 	{#if placement === 'free'}
@@ -72,6 +82,16 @@
 		{/if}
 
 		{#if placement === 'pinned'}
+			{#if hasSpeechTarget}
+				<button
+					type="button"
+					class="add-pinned"
+					onclick={() => store.alignSpeechBubbleToSpeaker(element.id)}
+				>
+					Place near speaker
+				</button>
+			{/if}
+
 			<p class="label">Place it on the screen</p>
 			<div class="region-grid" role="group" aria-label="Screen position">
 				{#each PIN_REGIONS as r (r)}

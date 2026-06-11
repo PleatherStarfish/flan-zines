@@ -29,6 +29,13 @@ export interface BlockInspectorProps<P> {
 	textKind?: TextKind;
 	onTextKindChange?: (kind: TextKind) => void;
 	theme?: Theme;
+	frameTargetOptions?: TextFrameTarget[];
+}
+
+export interface TextFrameTarget {
+	id: string;
+	label: string;
+	type: string;
 }
 
 // Structured accessibility fallback for blocks whose visual output is opaque to

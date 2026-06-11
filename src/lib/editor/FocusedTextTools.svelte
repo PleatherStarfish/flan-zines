@@ -1,11 +1,19 @@
 <script lang="ts">
 	import ZineRenderer from '$lib/zine/render/ZineRenderer.svelte';
 	import { defaultContentRole } from '$lib/zine/render/typeset';
+	import type { TextFrameTarget } from '$lib/zine/schema/block';
 	import type { Block } from '$lib/zine/schema/document';
 	import { resolveThemeColors, themeSwatches } from '$lib/zine/theme/registry';
 	import type {
 		BlockStyle,
+		SmsFrameGroup,
+		SmsFrameSide,
+		SpeechFrameMode,
+		SpeechFrameTail,
 		TextBackdropShape,
+		TextFrame,
+		TextFrameFill,
+		TextFrameOutline,
 		TextKind,
 		Theme,
 		ThemeColors,
@@ -19,6 +27,7 @@
 		style,
 		textKind = 'content',
 		theme,
+		frameTargetOptions = [],
 		onStyleChange,
 		onTextKindChange
 	}: {
@@ -26,6 +35,7 @@
 		style?: BlockStyle;
 		textKind?: TextKind;
 		theme?: Theme;
+		frameTargetOptions?: TextFrameTarget[];
 		onStyleChange?: (next: BlockStyle) => void;
 		onTextKindChange?: (kind: TextKind) => void;
 	} = $props();
@@ -44,6 +54,7 @@
 				effectiveRole === 'body')
 	);
 	const backdrop = $derived(style?.textBackdrop);
+	const textFrame = $derived(style?.textFrame);
 	const themeColors = $derived(resolveThemeColors(theme));
 	const colorSwatches = $derived(themeSwatches(theme));
 	const effectiveTextColor = $derived(
@@ -101,8 +112,51 @@
 		{ v: 'box', l: 'Box' },
 		{ v: 'circle', l: 'Circle' }
 	];
+	const frameChoices: { v: 'none' | 'speech' | 'thought' | 'sms'; l: string }[] = [
+		{ v: 'none', l: 'None' },
+		{ v: 'speech', l: 'Speech bubble' },
+		{ v: 'thought', l: 'Thought bubble' },
+		{ v: 'sms', l: 'Text message' }
+	];
+	const speechTails: { v: SpeechFrameTail; l: string }[] = [
+		{ v: 'none', l: 'No tail' },
+		{ v: 'top-left', l: 'Top left' },
+		{ v: 'top', l: 'Top' },
+		{ v: 'top-right', l: 'Top right' },
+		{ v: 'right', l: 'Right' },
+		{ v: 'bottom-right', l: 'Bottom right' },
+		{ v: 'bottom', l: 'Bottom' },
+		{ v: 'bottom-left', l: 'Bottom left' },
+		{ v: 'left', l: 'Left' }
+	];
+	const frameFills: { v: TextFrameFill; l: string }[] = [
+		{ v: 'paper', l: 'Paper' },
+		{ v: 'theme', l: 'Soft theme' },
+		{ v: 'accent', l: 'Accent' },
+		{ v: 'message', l: 'Message app' },
+		{ v: 'custom', l: 'Custom' }
+	];
+	const frameFillsForCurrent = $derived(
+		textFrame?.kind === 'sms' ? frameFills : frameFills.filter((fill) => fill.v !== 'message')
+	);
+	const smsSides: { v: SmsFrameSide; l: string }[] = [
+		{ v: 'incoming', l: 'Left side' },
+		{ v: 'outgoing', l: 'Right side' }
+	];
+	const smsGroups: { v: SmsFrameGroup; l: string }[] = [
+		{ v: 'single', l: 'Single' },
+		{ v: 'first', l: 'First' },
+		{ v: 'middle', l: 'Middle' },
+		{ v: 'last', l: 'Last' }
+	];
+	const outlines: { v: TextFrameOutline; l: string }[] = [
+		{ v: 'clean', l: 'Clean' },
+		{ v: 'sketch', l: 'Sketchy' }
+	];
 	const RECOMMENDED_BACKDROP_PADDING = 1;
 	const MAX_BACKDROP_PADDING = 4;
+	const RECOMMENDED_FRAME_PADDING = 1;
+	const MAX_FRAME_PADDING = 4;
 
 	const previewDocument = $derived<ZineDocument>({
 		schemaVersion: 7,
@@ -158,6 +212,11 @@
 	}
 
 	function setTextKind(kind: TextKind): void {
+		if (kind === 'content' && style?.textFrame) {
+			const next: BlockStyle = { ...(style ?? {}) };
+			delete next.textFrame;
+			emitStyle(next);
+		}
 		onTextKindChange?.(kind);
 	}
 
@@ -174,6 +233,86 @@
 			};
 		}
 		emitStyle(next);
+	}
+
+	function selectedFrameChoice(): 'none' | 'speech' | 'thought' | 'sms' {
+		if (!textFrame) return 'none';
+		if (textFrame.kind === 'sms') return 'sms';
+		return textFrame.mode === 'thought' ? 'thought' : 'speech';
+	}
+
+	function setTextFrame(choice: 'none' | 'speech' | 'thought' | 'sms'): void {
+		const next: BlockStyle = { ...(style ?? {}), typeset: { kind: 'other' } };
+		delete next.textBackdrop;
+		if (choice === 'none') {
+			delete next.textFrame;
+		} else if (choice === 'sms') {
+			next.textFrame = {
+				kind: 'sms',
+				side: 'incoming',
+				group: 'single',
+				fill: 'message',
+				padding: 0.8
+			};
+		} else {
+			const targetId = frameTargetOptions[0]?.id;
+			next.textFrame = {
+				kind: 'speech',
+				mode: choice as SpeechFrameMode,
+				tail: targetId ? 'auto' : choice === 'thought' ? 'none' : 'bottom-left',
+				speakerElementId: targetId,
+				outline: 'clean',
+				fill: 'paper',
+				padding: RECOMMENDED_FRAME_PADDING
+			};
+		}
+		onTextKindChange?.('other');
+		emitStyle(next);
+	}
+
+	function updateTextFrame(partial: Partial<TextFrame>): void {
+		if (!textFrame) return;
+		emitStyle({
+			...(style ?? {}),
+			typeset: { kind: 'other' },
+			textFrame: { ...textFrame, ...partial } as TextFrame
+		});
+	}
+
+	function updateSpeechFrame(partial: Partial<Extract<TextFrame, { kind: 'speech' }>>): void {
+		if (textFrame?.kind !== 'speech') return;
+		updateTextFrame({ ...partial, kind: 'speech' });
+	}
+
+	function setSpeechTarget(targetId: string): void {
+		if (textFrame?.kind !== 'speech') return;
+		updateSpeechFrame({
+			speakerElementId: targetId || undefined,
+			tail: targetId
+				? 'auto'
+				: textFrame.tail === 'auto'
+					? textFrame.mode === 'thought'
+						? 'none'
+						: 'bottom-left'
+					: textFrame.tail
+		});
+	}
+
+	function updateSmsFrame(partial: Partial<Extract<TextFrame, { kind: 'sms' }>>): void {
+		if (textFrame?.kind !== 'sms') return;
+		updateTextFrame({ ...partial, kind: 'sms' });
+	}
+
+	function setTextFrameColor(color: string): void {
+		if (!textFrame) return;
+		updateTextFrame({ color } as Partial<TextFrame>);
+	}
+
+	function setTextFramePadding(padding: number): void {
+		if (!textFrame) return;
+		updateTextFrame({
+			padding: Math.max(0, Math.min(MAX_FRAME_PADDING, padding))
+		} as Partial<TextFrame>);
 	}
 
 	function setTextColor(color: string): void {
@@ -301,6 +440,187 @@
 				</button>
 			</div>
 		</div>
+
+		{#if textKind === 'other' || textFrame}
+			<div class="text-tools__row">
+				<span class="text-tools__label">Special style</span>
+				<div class="chips" role="group" aria-label="Special text style">
+					{#each frameChoices as choice (choice.v)}
+						<button
+							type="button"
+							aria-pressed={selectedFrameChoice() === choice.v}
+							onclick={() => setTextFrame(choice.v)}
+						>
+							{choice.l}
+						</button>
+					{/each}
+				</div>
+				{#if textFrame}
+					<div class="frame-tools">
+						<div class="chips" role="group" aria-label="Bubble fill">
+							{#each frameFillsForCurrent as fill (fill.v)}
+								<button
+									type="button"
+									aria-pressed={textFrame.fill === fill.v}
+									onclick={() => updateTextFrame({ fill: fill.v } as Partial<TextFrame>)}
+								>
+									{fill.l}
+								</button>
+							{/each}
+						</div>
+
+						{#if textFrame.fill === 'custom'}
+							<label class="custom-color">
+								<span>Custom fill</span>
+								<input
+									type="color"
+									aria-label="Custom bubble color"
+									value={textFrame.color ?? themeColors.background}
+									oninput={(event) => setTextFrameColor(event.currentTarget.value)}
+								/>
+							</label>
+						{/if}
+
+						<div class="background-padding">
+							<div class="background-padding__topline">
+								<span>Bubble padding</span>
+								<button
+									type="button"
+									disabled={Math.abs(
+										(textFrame.padding ?? RECOMMENDED_FRAME_PADDING) - RECOMMENDED_FRAME_PADDING
+									) < 0.01}
+									onclick={() => setTextFramePadding(RECOMMENDED_FRAME_PADDING)}
+								>
+									Reset
+								</button>
+							</div>
+							<input
+								type="range"
+								aria-label="Bubble padding"
+								min="0"
+								max={MAX_FRAME_PADDING}
+								step="0.05"
+								value={textFrame.padding ?? RECOMMENDED_FRAME_PADDING}
+								oninput={(event) => setTextFramePadding(Number(event.currentTarget.value))}
+							/>
+							<output>{paddingLabel(textFrame.padding ?? RECOMMENDED_FRAME_PADDING)}</output>
+						</div>
+
+						{#if textFrame.kind === 'speech'}
+							<div class="chips" role="group" aria-label="Bubble outline">
+								{#each outlines as outline (outline.v)}
+									<button
+										type="button"
+										aria-pressed={textFrame.outline === outline.v}
+										onclick={() => updateSpeechFrame({ outline: outline.v })}
+									>
+										{outline.l}
+									</button>
+								{/each}
+							</div>
+							{#if frameTargetOptions.length}
+								<label class="text-input">
+									<span>Points to</span>
+									<select
+										aria-label="Speech bubble points to"
+										value={textFrame.speakerElementId ?? ''}
+										onchange={(event) => setSpeechTarget(event.currentTarget.value)}
+									>
+										<option value="">No speaker</option>
+										{#each frameTargetOptions as target (target.id)}
+											<option value={target.id}>{target.label}</option>
+										{/each}
+									</select>
+								</label>
+							{/if}
+							{#if textFrame.mode === 'speech' && !textFrame.speakerElementId}
+								<div class="chips" role="group" aria-label="Bubble tail">
+									{#each speechTails as tail (tail.v)}
+										<button
+											type="button"
+											aria-pressed={textFrame.tail === tail.v}
+											onclick={() => updateSpeechFrame({ tail: tail.v })}
+										>
+											{tail.l}
+										</button>
+									{/each}
+								</div>
+							{/if}
+						{:else}
+							<div class="chips" role="group" aria-label="Message side">
+								{#each smsSides as side (side.v)}
+									<button
+										type="button"
+										aria-pressed={textFrame.side === side.v}
+										onclick={() => updateSmsFrame({ side: side.v })}
+									>
+										{side.l}
+									</button>
+								{/each}
+							</div>
+							<div class="chips" role="group" aria-label="Message group">
+								{#each smsGroups as group (group.v)}
+									<button
+										type="button"
+										aria-pressed={textFrame.group === group.v}
+										onclick={() => updateSmsFrame({ group: group.v })}
+									>
+										{group.l}
+									</button>
+								{/each}
+							</div>
+							<label class="text-input">
+								<span>Sender name</span>
+								<input
+									type="text"
+									aria-label="Sender name"
+									value={textFrame.senderName ?? ''}
+									maxlength="48"
+									oninput={(event) =>
+										updateSmsFrame({ senderName: event.currentTarget.value || undefined })}
+								/>
+							</label>
+							<label class="text-input">
+								<span>Sender picture URL</span>
+								<input
+									type="url"
+									aria-label="Sender picture URL"
+									value={textFrame.senderAvatar?.src ?? ''}
+									oninput={(event) =>
+										updateSmsFrame({
+											senderAvatar: event.currentTarget.value
+												? {
+														...(textFrame.senderAvatar ?? {}),
+														src: event.currentTarget.value,
+														alt: textFrame.senderAvatar?.alt ?? ''
+													}
+												: undefined
+										})}
+								/>
+							</label>
+							{#if textFrame.senderAvatar?.src}
+								<label class="text-input">
+									<span>Picture description</span>
+									<input
+										type="text"
+										aria-label="Sender picture description"
+										value={textFrame.senderAvatar.alt ?? ''}
+										maxlength="160"
+										oninput={(event) =>
+											updateSmsFrame({
+												senderAvatar: {
+													...textFrame.senderAvatar,
+													alt: event.currentTarget.value
+												}
+											})}
+									/>
+								</label>
+							{/if}
+						{/if}
+					</div>
+				{/if}
+			</div>
+		{/if}
 
 		<div class="text-tools__row">
 			<span class="text-tools__label">Alignment</span>
@@ -633,6 +953,13 @@
 		gap: 0.4rem;
 		margin-top: 0.18rem;
 	}
+	.frame-tools {
+		display: grid;
+		gap: 0.42rem;
+		margin-top: 0.18rem;
+		border-left: 2px solid oklch(0.24 0.065 281 / 0.24);
+		padding-left: 0.55rem;
+	}
 	.color-swatches {
 		display: flex;
 		flex-wrap: wrap;
@@ -711,6 +1038,19 @@
 		border-radius: var(--pixel-radius);
 		background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
 		padding: 0;
+	}
+	.text-input {
+		display: grid;
+		gap: 0.18rem;
+		color: hsl(var(--muted-foreground));
+		font-size: 0.7rem;
+		font-weight: 800;
+	}
+	.text-input input {
+		min-width: 0;
+		padding: 0.34rem 0.42rem;
+		font: inherit;
+		font-size: 0.74rem;
 	}
 	.backdrop-opacity input[type='range'] {
 		width: 100%;

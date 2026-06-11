@@ -443,6 +443,182 @@ describe('ZineRenderer', () => {
 		expect(blocks[2].querySelector(':scope > .zine-richtext')).toBeTruthy();
 	});
 
+	it('renders special text frames from block style data', () => {
+		const document = parseDocument({
+			schemaVersion: 7,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'page',
+							length: 'auto',
+							beats: [{ id: 'b', at: 0 }],
+							elements: [
+								{
+									id: 'speech',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'speech_blk',
+										type: 'richText',
+										props: {
+											doc: {
+												type: 'doc',
+												content: [
+													{
+														type: 'paragraph',
+														content: [{ type: 'text', text: 'Watch the grate.' }]
+													}
+												]
+											}
+										},
+										style: {
+											typeset: { kind: 'other' },
+											textFrame: {
+												kind: 'speech',
+												mode: 'thought',
+												tail: 'none',
+												outline: 'sketch',
+												fill: 'paper',
+												padding: 1.2
+											}
+										}
+									}
+								},
+								{
+									id: 'sms',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'sms_blk',
+										type: 'richText',
+										props: {
+											doc: {
+												type: 'doc',
+												content: [
+													{
+														type: 'paragraph',
+														content: [{ type: 'text', text: 'Are you seeing this?' }]
+													}
+												]
+											}
+										},
+										style: {
+											typeset: { kind: 'other' },
+											textFrame: {
+												kind: 'sms',
+												side: 'incoming',
+												group: 'single',
+												fill: 'theme',
+												padding: 0.8,
+												senderName: 'Maya',
+												senderAvatar: {
+													src: 'https://example.com/maya.png',
+													alt: 'Maya'
+												}
+											}
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		}) satisfies ZineDocument;
+
+		const { container } = render(ZineRenderer, { props: { document } });
+		const speech = blockContaining(container, 'Watch the grate.');
+		expect(speech.getAttribute('data-text-frame')).toBe('speech');
+		expect(speech.getAttribute('data-frame-mode')).toBe('thought');
+		expect(speech.getAttribute('data-frame-outline')).toBe('sketch');
+		expect(speech.getAttribute('style')).toMatch(/--zine-text-frame-padding:\s*1\.2/);
+		expect(speech.querySelector('.zine-rough-frame')).toBeTruthy();
+
+		const sms = blockContaining(container, 'Are you seeing this?');
+		expect(sms.getAttribute('data-text-frame')).toBe('sms');
+		expect(sms.getAttribute('data-frame-side')).toBe('incoming');
+		expect(sms.querySelector('.zine-sms-sender')?.textContent).toBe('Maya');
+		expect(sms.querySelector('.zine-sms-avatar')?.getAttribute('alt')).toBe('Maya');
+	});
+
+	it('resolves speech bubble tails toward selected scene targets', () => {
+		const document = parseDocument({
+			schemaVersion: 7,
+			acts: [
+				{
+					id: 'act',
+					scenes: [
+						{
+							id: 'scn',
+							type: 'page',
+							length: 'auto',
+							beats: [{ id: 'b', at: 0 }],
+							elements: [
+								{
+									id: 'bubble',
+									track: 'content',
+									placement: 'pinned',
+									anchor: { region: 'bottom-left', dx: 0, dy: 0 },
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'bubble_blk',
+										type: 'richText',
+										props: {
+											doc: {
+												type: 'doc',
+												content: [
+													{
+														type: 'paragraph',
+														content: [{ type: 'text', text: 'That drain is talking.' }]
+													}
+												]
+											}
+										},
+										style: {
+											typeset: { kind: 'other' },
+											textFrame: {
+												kind: 'speech',
+												mode: 'speech',
+												tail: 'auto',
+												speakerElementId: 'speaker',
+												outline: 'clean',
+												fill: 'paper',
+												padding: 1
+											}
+										}
+									}
+								},
+								{
+									id: 'speaker',
+									track: 'media',
+									placement: 'pinned',
+									anchor: { region: 'top-right', dx: 0, dy: 0 },
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'speaker_blk',
+										type: 'image',
+										props: {
+											src: 'https://example.com/drain.png',
+											alt: 'A storm drain'
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		}) satisfies ZineDocument;
+
+		const { container } = render(ZineRenderer, { props: { document } });
+		const bubble = blockContaining(container, 'That drain is talking.');
+		expect(bubble.getAttribute('data-frame-speaker')).toBe('speaker');
+		expect(bubble.getAttribute('data-frame-tail')).toBe('top-right');
+	});
+
 	it('keeps free text transparent over canvas scene backgrounds unless a backdrop is explicit', () => {
 		const document = parseDocument({
 			schemaVersion: 7,

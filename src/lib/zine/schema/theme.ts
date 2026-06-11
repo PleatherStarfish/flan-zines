@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SafeUrlSchema } from './url';
 
 // Section LAYOUT is the v1 vocabulary (appearance). v2 renames the primary axis to
 // `kind` (purpose) and preserves the original layout under section.presentation so the
@@ -57,6 +58,85 @@ export const TextBackdropSchema = z.object({
 });
 export type TextBackdrop = z.infer<typeof TextBackdropSchema>;
 
+export const TEXT_FRAME_KINDS = ['speech', 'sms'] as const;
+export const TextFrameKindSchema = z.enum(TEXT_FRAME_KINDS);
+export type TextFrameKind = z.infer<typeof TextFrameKindSchema>;
+
+export const SPEECH_FRAME_MODES = ['speech', 'thought'] as const;
+export const SpeechFrameModeSchema = z.enum(SPEECH_FRAME_MODES);
+export type SpeechFrameMode = z.infer<typeof SpeechFrameModeSchema>;
+
+export const SPEECH_FRAME_TAILS = [
+	'auto',
+	'none',
+	'top-left',
+	'top',
+	'top-right',
+	'right',
+	'bottom-right',
+	'bottom',
+	'bottom-left',
+	'left'
+] as const;
+export const SpeechFrameTailSchema = z.enum(SPEECH_FRAME_TAILS);
+export type SpeechFrameTail = z.infer<typeof SpeechFrameTailSchema>;
+
+export const TEXT_FRAME_OUTLINES = ['clean', 'sketch'] as const;
+export const TextFrameOutlineSchema = z.enum(TEXT_FRAME_OUTLINES);
+export type TextFrameOutline = z.infer<typeof TextFrameOutlineSchema>;
+
+export const TEXT_FRAME_FILLS = ['paper', 'theme', 'accent', 'message', 'custom'] as const;
+export const TextFrameFillSchema = z.enum(TEXT_FRAME_FILLS);
+export type TextFrameFill = z.infer<typeof TextFrameFillSchema>;
+
+export const SMS_FRAME_SIDES = ['incoming', 'outgoing'] as const;
+export const SmsFrameSideSchema = z.enum(SMS_FRAME_SIDES);
+export type SmsFrameSide = z.infer<typeof SmsFrameSideSchema>;
+
+export const SMS_FRAME_GROUPS = ['single', 'first', 'middle', 'last'] as const;
+export const SmsFrameGroupSchema = z.enum(SMS_FRAME_GROUPS);
+export type SmsFrameGroup = z.infer<typeof SmsFrameGroupSchema>;
+
+export const TextFramePaddingSchema = z.number().min(0).max(4);
+export type TextFramePadding = z.infer<typeof TextFramePaddingSchema>;
+
+const SenderAvatarSchema = z.object({
+	src: SafeUrlSchema.optional(),
+	assetId: z.string().max(128).optional(),
+	alt: z.string().max(160).optional()
+});
+export type SenderAvatar = z.infer<typeof SenderAvatarSchema>;
+
+export const SpeechTextFrameSchema = z.object({
+	kind: z.literal('speech'),
+	mode: SpeechFrameModeSchema.default('speech'),
+	tail: SpeechFrameTailSchema.default('auto'),
+	speakerElementId: z.string().max(128).optional(),
+	outline: TextFrameOutlineSchema.default('clean'),
+	fill: TextFrameFillSchema.default('paper'),
+	color: HexColorSchema.optional(),
+	padding: TextFramePaddingSchema.default(1)
+});
+export type SpeechTextFrame = z.infer<typeof SpeechTextFrameSchema>;
+
+export const SmsTextFrameSchema = z.object({
+	kind: z.literal('sms'),
+	side: SmsFrameSideSchema.default('incoming'),
+	group: SmsFrameGroupSchema.default('single'),
+	fill: TextFrameFillSchema.default('message'),
+	color: HexColorSchema.optional(),
+	padding: TextFramePaddingSchema.default(0.8),
+	senderName: z.string().max(48).optional(),
+	senderAvatar: SenderAvatarSchema.optional()
+});
+export type SmsTextFrame = z.infer<typeof SmsTextFrameSchema>;
+
+export const TextFrameSchema = z.discriminatedUnion('kind', [
+	SpeechTextFrameSchema,
+	SmsTextFrameSchema
+]);
+export type TextFrame = z.infer<typeof TextFrameSchema>;
+
 // Editorial typesetting (docs/design/pinned-content-and-typesetting.md, Part B). A `role` is a
 // one-tap preset (magazine roles); the rest are bounded chips. All injection-safe enums — the
 // renderer resolves these to a measure/leading/etc. via the pure `resolveTypeset()` helper
@@ -99,6 +179,7 @@ export const BlockStyleSchema = z.object({
 	// Explicit background treatment for text blocks. Default is absent/transparent.
 	// Rendered tightly around the text content, never as a full-width bar.
 	textBackdrop: TextBackdropSchema.optional(),
+	textFrame: TextFrameSchema.optional(),
 	typeset: TypesetSchema.optional()
 });
 export type BlockStyle = z.infer<typeof BlockStyleSchema>;

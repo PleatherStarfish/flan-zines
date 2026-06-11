@@ -6,6 +6,24 @@ export default defineConfig({
 	// svelteTesting() wires @testing-library/svelte for vitest (client-build
 	// resolution + auto-cleanup); it only affects test runs, not build/dev.
 	plugins: [sveltekit(), svelteTesting()],
+	build: {
+		rollupOptions: {
+			output: {
+				manualChunks(id) {
+					if (
+						id.includes('/node_modules/roughjs/') ||
+						id.includes('/node_modules/hachure-fill/') ||
+						id.includes('/node_modules/path-data-parser/') ||
+						id.includes('/node_modules/points-on-curve/') ||
+						id.includes('/node_modules/points-on-path/')
+					) {
+						return 'rough-text-frame';
+					}
+				}
+			}
+		}
+	},
+	worker: { format: 'es' },
 	// Distinctive high ports so this project never collides with other local servers
 	// (storybook runs on 38410; e2e preview on 38420 — see playwright.config.ts).
 	server: { port: 38400, strictPort: true },

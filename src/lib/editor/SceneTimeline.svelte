@@ -14,6 +14,7 @@
 	import { RAMP } from '$lib/zine/render/timeline';
 	import type { Speed } from '$lib/zine/animations/schema';
 	import type { EditorStore } from './store.svelte';
+	import CharacterBuilder from './pixel-character/CharacterBuilder.svelte';
 
 	let {
 		store,
@@ -40,22 +41,25 @@
 		heading: 'Title',
 		richText: 'Words',
 		image: 'Picture',
+		characterSprite: 'Character',
 		linkButton: 'Link',
 		spacer: 'Pause'
 	};
 	type AddChoice =
 		| { label: string; type: string; track: ElementTrack; action?: undefined }
-		| { label: string; action: 'backdrop'; type?: undefined; track?: undefined };
+		| { label: string; action: 'backdrop' | 'character'; type?: undefined; track?: undefined };
 	const addChoices: AddChoice[] = [
 		{ label: 'Title', type: 'heading', track: 'content' },
 		{ label: 'Words', type: 'richText', track: 'content' },
 		{ label: 'Picture', type: 'image', track: 'media' },
+		{ label: 'Character', action: 'character' },
 		{ label: 'Backdrop', action: 'backdrop' },
 		{ label: 'Link', type: 'linkButton', track: 'content' },
 		{ label: 'Pause', type: 'spacer', track: 'content' }
 	];
 
 	let scrub = $state(0);
+	let characterBuilderOpen = $state(false);
 	let axisEl = $state<HTMLDivElement | null>(null);
 	let dragPreview = $state<{ elementId: string; range: TimelineRange } | null>(null);
 	let beatPreview = $state<{ beatId: string; at: number } | null>(null);
@@ -114,6 +118,11 @@
 			store.addBackdropLayer(scene.id);
 			return;
 		}
+		if (choice.action === 'character') {
+			characterBuilderOpen = true;
+			return;
+		}
+		if (!choice.type || !choice.track) return;
 		store.addElementAt(scene.id, choice.type, choice.track, scrub);
 	}
 
@@ -504,7 +513,9 @@
 					type="button"
 					title={choice.action === 'backdrop'
 						? 'Picture behind the text that drifts as readers scroll'
-						: undefined}
+						: choice.action === 'character'
+							? 'Make and download pixel-art character GIFs'
+							: undefined}
 					onclick={() => addClip(choice)}
 				>
 					{choice.label}
@@ -663,6 +674,10 @@
 			{/if}
 		</div>
 	</section>
+
+	{#if characterBuilderOpen}
+		<CharacterBuilder theme={document.theme} onClose={() => (characterBuilderOpen = false)} />
+	{/if}
 </div>
 
 <style>

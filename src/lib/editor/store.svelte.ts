@@ -436,10 +436,17 @@ export class EditorStore {
 		const parsed = BlockStyleSchema.safeParse(style);
 		if (!parsed.success) return;
 		this.mutate((draft) => {
-			const element = findElement(draft, elementId)?.element;
-			if (!element) return;
+			const found = findElement(draft, elementId);
+			if (!found) return;
+			const { scene, element } = found;
+			const previousTargetId = speechTargetId(element);
+			const wasPinned = element.placement === 'pinned';
 			if (Object.keys(parsed.data).length) element.block.style = parsed.data;
 			else delete element.block.style;
+			const nextTargetId = speechTargetId(element);
+			if (nextTargetId && (nextTargetId !== previousTargetId || !wasPinned)) {
+				placeSpeechBubbleNearSpeaker(scene, element, nextTargetId);
+			}
 		});
 	}
 	updateElementRange(elementId: string, range: Element['range']): void {
@@ -538,6 +545,16 @@ export class EditorStore {
 			if (!element?.anchor) return;
 			element.anchor.dx = 0;
 			element.anchor.dy = 0;
+		});
+	}
+
+	/** Re-pin a targeted speech/thought bubble near the item it points to. */
+	alignSpeechBubbleToSpeaker(elementId: string): void {
+		this.mutate((draft) => {
+			const found = findElement(draft, elementId);
+			if (!found) return;
+			const targetId = speechTargetId(found.element);
+			if (targetId) placeSpeechBubbleNearSpeaker(found.scene, found.element, targetId);
 		});
 	}
 
@@ -928,12 +945,105 @@ function pinElement(scene: Scene, element: Element): boolean {
 	return true;
 }
 
+function speechTargetId(element: Element): string | undefined {
+	const frame = element.block.style?.textFrame;
+	return frame?.kind === 'speech' ? frame.speakerElementId : undefined;
+}
+
+function placeSpeechBubbleNearSpeaker(scene: Scene, element: Element, targetId: string): boolean {
+	if (element.id === targetId) return false;
+	const target = scene.elements.find((candidate) => candidate.id === targetId);
+	if (!target || !pinElement(scene, element)) return false;
+	element.anchor = { region: bubbleRegionForTarget(scene, target), dx: 0, dy: 0 };
+	element.range = { start: target.range.start, end: target.range.end };
+	return true;
+}
+
+type GridCell = { col: 0 | 1 | 2; row: 0 | 1 | 2 };
+
+const REGION_CELLS: Record<PinRegion, GridCell> = {
+	'top-left': { col: 0, row: 0 },
+	top: { col: 1, row: 0 },
+	'top-right': { col: 2, row: 0 },
+	left: { col: 0, row: 1 },
+	center: { col: 1, row: 1 },
+	right: { col: 2, row: 1 },
+	'bottom-left': { col: 0, row: 2 },
+	bottom: { col: 1, row: 2 },
+	'bottom-right': { col: 2, row: 2 }
+};
+
+const CELL_REGIONS: Record<`${GridCell['col']},${GridCell['row']}`, PinRegion> = {
+	'0,0': 'top-left',
+	'1,0': 'top',
+	'2,0': 'top-right',
+	'0,1': 'left',
+	'1,1': 'center',
+	'2,1': 'right',
+	'0,2': 'bottom-left',
+	'1,2': 'bottom',
+	'2,2': 'bottom-right'
+};
+
+function bubbleRegionForTarget(scene: Scene, target: Element): PinRegion {
+	const cell = targetCell(scene, target);
+	const bubbleCell: GridCell =
+		cell.col === 0
+			? { col: 2, row: cell.row }
+			: cell.col === 2
+				? { col: 0, row: cell.row }
+				: cell.row === 0
+					? { col: 1, row: 1 }
+					: cell.row === 2
+						? { col: 1, row: 1 }
+						: { col: 2, row: 1 };
+	return CELL_REGIONS[`${bubbleCell.col},${bubbleCell.row}`];
+}
+
+function targetCell(scene: Scene, target: Element): GridCell {
+	if (target.placement === 'pinned') return REGION_CELLS[target.anchor?.region ?? 'center'];
+	const path = averagePathPoint(target);
+	if (path) return cellFromPoint(path.x, path.y);
+	if (scene.scrollAxis === 'horizontal') return cellFromPoint(target.range.start, 0.5);
+	const index = Math.max(
+		0,
+		scene.elements.findIndex((candidate) => candidate.id === target.id)
+	);
+	return cellFromPoint(0.5, (index + 1) / (scene.elements.length + 1));
+}
+
+function averagePathPoint(element: Element): { x: number; y: number } | null {
+	if (element.motion?.type !== 'path') return null;
+	const params = element.motion.params as { waypoints?: unknown[] } | undefined;
+	const points = (params?.waypoints ?? [])
+		.map((point) => {
+			const p = point as { x?: unknown; y?: unknown };
+			return typeof p.x === 'number' && typeof p.y === 'number'
+				? { x: p.x / 100, y: p.y / 100 }
+				: null;
+		})
+		.filter((point): point is { x: number; y: number } => point != null);
+	if (!points.length) return null;
+	return {
+		x: clamp(points.reduce((sum, point) => sum + point.x, 0) / points.length, 0, 1),
+		y: clamp(points.reduce((sum, point) => sum + point.y, 0) / points.length, 0, 1)
+	};
+}
+
+function cellFromPoint(x: number, y: number): GridCell {
+	return {
+		col: x < 0.34 ? 0 : x > 0.66 ? 2 : 1,
+		row: y < 0.34 ? 0 : y > 0.66 ? 2 : 1
+	};
+}
+
 function setTextKindOnElement(element: Element, kind: TextKind): void {
 	if (!isTextBlockType(element.block.type)) return;
 	const nextStyle: BlockStyle = { ...(element.block.style ?? {}) };
 	if (kind === 'content') {
 		moveElementToFlow(element);
 		delete element.motion;
+		delete nextStyle.textFrame;
 		nextStyle.typeset = {
 			...(nextStyle.typeset ?? {}),
 			kind: 'content',

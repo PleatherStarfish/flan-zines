@@ -218,4 +218,45 @@ describe('pinned placement intents', () => {
 		// the second clip starts after the first → "one at a time"
 		expect(el(store, b).range.start).toBeGreaterThan(el(store, a).range.start);
 	});
+
+	it('pins a targeted speech bubble near its speaker and keeps manual nudges', () => {
+		store = makeStore();
+		const bubble = store.addElement('scn_1', 'richText')!;
+		const speaker = store.addElement('scn_1', 'image')!;
+		store.setElementPlacement(speaker, 'pinned');
+		store.setElementAnchorRegion(speaker, 'top-right');
+		store.updateElementRange(speaker, { start: 0.25, end: 0.7 });
+
+		store.updateElementStyle(bubble, {
+			typeset: { kind: 'other' },
+			textFrame: {
+				kind: 'speech',
+				mode: 'speech',
+				tail: 'auto',
+				speakerElementId: speaker,
+				outline: 'clean',
+				fill: 'paper',
+				padding: 1
+			}
+		});
+
+		expect(scene(store).type).toBe('reveal');
+		expect(el(store, bubble).placement).toBe('pinned');
+		expect(el(store, bubble).anchor).toEqual({ region: 'top-left', dx: 0, dy: 0 });
+		expect(el(store, bubble).range).toEqual({ start: 0.25, end: 0.7 });
+		expect(el(store, bubble).block.style?.textFrame).toMatchObject({
+			kind: 'speech',
+			speakerElementId: speaker
+		});
+
+		store.nudgeAnchor(bubble, 'x', 2);
+		store.updateElementStyle(bubble, {
+			...(el(store, bubble).block.style ?? {}),
+			textColor: '#14181f'
+		});
+		expect(el(store, bubble).anchor).toEqual({ region: 'top-left', dx: 2, dy: 0 });
+
+		store.alignSpeechBubbleToSpeaker(bubble);
+		expect(el(store, bubble).anchor).toEqual({ region: 'top-left', dx: 0, dy: 0 });
+	});
 });

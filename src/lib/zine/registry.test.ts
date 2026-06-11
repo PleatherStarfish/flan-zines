@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { allBlocks, blockTypes, getBlock, registerBlock } from './registry';
 
-const CORE = ['heading', 'richText', 'image', 'linkButton', 'divider', 'spacer'];
+const CORE = ['heading', 'richText', 'image', 'characterSprite', 'linkButton', 'divider', 'spacer'];
 const CATEGORIES = ['text', 'media', 'structure', 'interactive'];
 
 describe('block registry integrity', () => {

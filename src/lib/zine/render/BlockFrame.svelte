@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { BlockStyle, TextKind } from '../schema/theme';
+	import type { BlockStyle, SpeechFrameTail, TextKind } from '../schema/theme';
 	import type { AnimationDescriptor } from '../schema/animation';
 	import { getBlockDecoration } from './context';
+	import RoughTextFrame from './RoughTextFrame.svelte';
 	import { resolveTypeset } from './typeset';
 
 	// Shared per-block wrapper. Applies block style (alignment) and is the single seam
@@ -21,6 +22,7 @@
 		animation,
 		timelineStyle,
 		timelineActive,
+		speechTail,
 		children
 	}: {
 		blockId?: string;
@@ -32,6 +34,7 @@
 		animation?: AnimationDescriptor;
 		timelineStyle?: string;
 		timelineActive?: boolean;
+		speechTail?: SpeechFrameTail;
 		children: Snippet;
 	} = $props();
 
@@ -39,6 +42,8 @@
 	const editable = $derived(Boolean(decoration && blockId && decoration().enabled));
 	const selected = $derived(decoration && blockId ? decoration().selectedId === blockId : false);
 	const textBackdrop = $derived(style?.textBackdrop);
+	const textFrame = $derived(style?.textFrame);
+	const resolvedSpeechTail = $derived(resolveSpeechTail());
 	const textColor = $derived(style?.textColor);
 	// Editorial typeset resolved to concrete, bounded values (measure/leading/case/align/wrap).
 	const typeset = $derived(resolveTypeset(style, blockType, textKind, blockProps));
@@ -51,13 +56,62 @@
 			parts.push(`--zine-text-backdrop-opacity:${Math.round(textBackdrop.opacity * 100)}%`);
 			parts.push(`--zine-text-backdrop-padding:${textBackdrop.padding ?? 1}`);
 		}
+		if (textFrame) {
+			parts.push(`--zine-text-frame-padding:${textFrame.padding}`);
+			if (textFrame.color) parts.push(`--zine-text-frame-color:${textFrame.color}`);
+		}
 		// Numeric typeset values go through bounded CSS custom properties (never raw author CSS).
 		if (typeset.measureCh) parts.push(`--zine-ts-measure:${typeset.measureCh}ch`);
 		if (typeset.leading) parts.push(`--zine-ts-leading:${typeset.leading}`);
 		if (typeset.tidyWrap) parts.push(`--zine-ts-wrap:${typeset.tidyWrap}`);
 		return parts.length ? parts.join(';') : undefined;
 	});
+
+	function resolveSpeechTail(): SpeechFrameTail | undefined {
+		if (textFrame?.kind !== 'speech') return undefined;
+		if (speechTail && speechTail !== 'auto') return speechTail;
+		if (textFrame.tail !== 'auto') return textFrame.tail;
+		return textFrame.mode === 'thought' ? 'none' : 'bottom-left';
+	}
 </script>
+
+{#snippet blockContent()}
+	{#if textFrame}
+		{#if textFrame.kind === 'sms' && textFrame.side === 'incoming' && textFrame.senderAvatar?.src}
+			<img
+				class="zine-sms-avatar"
+				src={textFrame.senderAvatar.src}
+				alt={textFrame.senderAvatar.alt ?? ''}
+				loading="lazy"
+				decoding="async"
+			/>
+		{/if}
+		<div class="zine-text-frame-body">
+			{#if textFrame.kind === 'speech' && textFrame.outline === 'sketch'}
+				<RoughTextFrame mode={textFrame.mode} tail={resolvedSpeechTail} />
+			{/if}
+			{#if textFrame.kind === 'sms' && textFrame.senderName}
+				<span class="zine-sms-sender">{textFrame.senderName}</span>
+			{/if}
+			{@render children()}
+		</div>
+		{#if textFrame.kind === 'sms' && textFrame.side === 'outgoing' && textFrame.senderAvatar?.src}
+			<img
+				class="zine-sms-avatar"
+				src={textFrame.senderAvatar.src}
+				alt={textFrame.senderAvatar.alt ?? ''}
+				loading="lazy"
+				decoding="async"
+			/>
+		{/if}
+	{:else}
+		{#if textBackdrop?.shape === 'circle'}
+			<span class="zine-circle-shape zine-circle-shape--left" aria-hidden="true"></span>
+			<span class="zine-circle-shape zine-circle-shape--right" aria-hidden="true"></span>
+		{/if}
+		{@render children()}
+	{/if}
+{/snippet}
 
 {#if editable && decoration && blockId}
 	<div class="zine-block-shell" class:is-selected={selected}>
@@ -78,6 +132,14 @@
 			data-animation={animation?.type}
 			data-text-color={textColor ? true : undefined}
 			data-text-backdrop={textBackdrop?.shape}
+			data-text-frame={textFrame?.kind}
+			data-frame-mode={textFrame?.kind === 'speech' ? textFrame.mode : undefined}
+			data-frame-tail={resolvedSpeechTail}
+			data-frame-speaker={textFrame?.kind === 'speech' ? textFrame.speakerElementId : undefined}
+			data-frame-outline={textFrame?.kind === 'speech' ? textFrame.outline : undefined}
+			data-frame-fill={textFrame?.fill}
+			data-frame-side={textFrame?.kind === 'sms' ? textFrame.side : undefined}
+			data-frame-group={textFrame?.kind === 'sms' ? textFrame.group : undefined}
 			data-typeset={typeset.hasTypeset || undefined}
 			data-text-kind={typeset.kind}
 			data-typeset-role={typeset.role}
@@ -85,11 +147,7 @@
 			data-tidy={typeset.tidyWrap}
 			style={frameStyle}
 		>
-			{#if textBackdrop?.shape === 'circle'}
-				<span class="zine-circle-shape zine-circle-shape--left" aria-hidden="true"></span>
-				<span class="zine-circle-shape zine-circle-shape--right" aria-hidden="true"></span>
-			{/if}
-			{@render children()}
+			{@render blockContent()}
 		</div>
 	</div>
 {:else}
@@ -100,6 +158,14 @@
 		data-animation={animation?.type}
 		data-text-color={textColor ? true : undefined}
 		data-text-backdrop={textBackdrop?.shape}
+		data-text-frame={textFrame?.kind}
+		data-frame-mode={textFrame?.kind === 'speech' ? textFrame.mode : undefined}
+		data-frame-tail={resolvedSpeechTail}
+		data-frame-speaker={textFrame?.kind === 'speech' ? textFrame.speakerElementId : undefined}
+		data-frame-outline={textFrame?.kind === 'speech' ? textFrame.outline : undefined}
+		data-frame-fill={textFrame?.fill}
+		data-frame-side={textFrame?.kind === 'sms' ? textFrame.side : undefined}
+		data-frame-group={textFrame?.kind === 'sms' ? textFrame.group : undefined}
 		data-typeset={typeset.hasTypeset || undefined}
 		data-text-kind={typeset.kind}
 		data-typeset-role={typeset.role}
@@ -107,11 +173,7 @@
 		data-tidy={typeset.tidyWrap}
 		style={frameStyle}
 	>
-		{#if textBackdrop?.shape === 'circle'}
-			<span class="zine-circle-shape zine-circle-shape--left" aria-hidden="true"></span>
-			<span class="zine-circle-shape zine-circle-shape--right" aria-hidden="true"></span>
-		{/if}
-		{@render children()}
+		{@render blockContent()}
 	</div>
 {/if}
 

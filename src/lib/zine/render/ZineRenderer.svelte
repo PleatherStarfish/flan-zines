@@ -3,9 +3,11 @@
 	import {
 		sceneScrollScreens,
 		type Element,
+		type PinRegion,
 		type Scene,
 		type ZineDocument
 	} from '../schema/document';
+	import type { SpeechFrameTail } from '../schema/theme';
 	import { themeVars, themeSwatchesRgb, resolveThemeColors } from '../theme/registry';
 	import { reducedMotion } from '$lib/a11y/reduced-motion';
 	import BlockFrame from './BlockFrame.svelte';
@@ -446,6 +448,114 @@
 		const nudge = pinNudgeStyle(element.anchor);
 		return nudge ? `${z};${nudge}` : z;
 	}
+
+	const REGION_POINTS: Record<PinRegion, [number, number]> = {
+		'top-left': [0.12, 0.12],
+		top: [0.5, 0.12],
+		'top-right': [0.88, 0.12],
+		left: [0.12, 0.5],
+		center: [0.5, 0.5],
+		right: [0.88, 0.5],
+		'bottom-left': [0.12, 0.88],
+		bottom: [0.5, 0.88],
+		'bottom-right': [0.88, 0.88]
+	};
+
+	function clamp01(value: number): number {
+		return Math.max(0, Math.min(1, value));
+	}
+
+	function pathPoint(element: Element, progress: number | undefined): [number, number] | null {
+		if (element.motion?.type !== 'path') return null;
+		const params = element.motion.params as { waypoints?: unknown[] } | undefined;
+		const waypoints = (params?.waypoints ?? [])
+			.map((point) => {
+				const p = point as { at?: unknown; x?: unknown; y?: unknown };
+				return typeof p.at === 'number' && typeof p.x === 'number' && typeof p.y === 'number'
+					? { at: p.at, x: p.x, y: p.y }
+					: null;
+			})
+			.filter((point): point is { at: number; x: number; y: number } => point != null)
+			.sort((a, b) => a.at - b.at);
+		if (!waypoints.length) return null;
+		const rangeDuration = Math.max(0.0001, element.range.end - element.range.start);
+		const phase = clamp01(
+			((progress ?? element.range.start) - element.range.start) / rangeDuration
+		);
+		let previous = waypoints[0];
+		for (const next of waypoints.slice(1)) {
+			if (phase <= next.at) {
+				const segment = Math.max(0.0001, next.at - previous.at);
+				const local = clamp01((phase - previous.at) / segment);
+				return [
+					clamp01((previous.x + (next.x - previous.x) * local) / 100),
+					clamp01((previous.y + (next.y - previous.y) * local) / 100)
+				];
+			}
+			previous = next;
+		}
+		return [clamp01(previous.x / 100), clamp01(previous.y / 100)];
+	}
+
+	function elementPoint(
+		scene: Scene,
+		element: Element,
+		progress: number | undefined
+	): [number, number] {
+		if (element.placement === 'pinned') {
+			const [x, y] = REGION_POINTS[pinRegion(element.anchor)];
+			return [
+				clamp01(x + (element.anchor?.dx ?? 0) * 0.035),
+				clamp01(y + (element.anchor?.dy ?? 0) * 0.035)
+			];
+		}
+		const path = pathPoint(element, progress);
+		if (path) return path;
+		const index = Math.max(
+			0,
+			scene.elements.findIndex((candidate) => candidate.id === element.id)
+		);
+		const sourceY = clamp01((index + 1) / (scene.elements.length + 1));
+		if (scene.scrollAxis === 'horizontal') return [clamp01(element.range.start), sourceY];
+		return [0.5, sourceY];
+	}
+
+	function tailToward(from: [number, number], to: [number, number]): SpeechFrameTail {
+		const dx = to[0] - from[0];
+		const dy = to[1] - from[1];
+		if (Math.abs(dx) > Math.abs(dy) * 1.25) return dx < 0 ? 'left' : 'right';
+		if (dy < 0) {
+			if (dx < -0.18) return 'top-left';
+			if (dx > 0.18) return 'top-right';
+			return 'top';
+		}
+		if (dx < -0.18) return 'bottom-left';
+		if (dx > 0.18) return 'bottom-right';
+		return 'bottom';
+	}
+
+	function fallbackSpeechTail(element: Element): SpeechFrameTail {
+		const frame = element.block.style?.textFrame;
+		if (frame?.kind !== 'speech') return 'none';
+		if (frame.tail !== 'auto') return frame.tail;
+		return frame.mode === 'thought' ? 'none' : 'bottom-left';
+	}
+
+	function speechTailFor(
+		scene: Scene,
+		element: Element,
+		progress: number | undefined
+	): SpeechFrameTail | undefined {
+		const frame = element.block.style?.textFrame;
+		if (frame?.kind !== 'speech') return undefined;
+		if (!frame.speakerElementId) return fallbackSpeechTail(element);
+		const target = scene.elements.find((candidate) => candidate.id === frame.speakerElementId);
+		if (!target) return fallbackSpeechTail(element);
+		return tailToward(
+			elementPoint(scene, element, progress),
+			elementPoint(scene, target, progress)
+		);
+	}
 </script>
 
 <article
@@ -534,6 +644,7 @@
 												animation={element.legacyAnimation}
 												timelineStyle={timeline.style || undefined}
 												timelineActive={timeline.active}
+												speechTail={speechTailFor(scene, element, progress)}
 											>
 												<Render props={element.block.props} />
 											</BlockFrame>
@@ -565,6 +676,7 @@
 											animation={element.legacyAnimation}
 											timelineStyle={timeline.style || undefined}
 											timelineActive={timeline.active}
+											speechTail={speechTailFor(scene, element, progress)}
 										>
 											<Render props={block.props} />
 										</BlockFrame>
@@ -602,6 +714,7 @@
 												animation={element.legacyAnimation}
 												timelineStyle={timeline.style || undefined}
 												timelineActive={timeline.active}
+												speechTail={speechTailFor(scene, element, progress)}
 											>
 												<Render props={element.block.props} />
 											</BlockFrame>
@@ -634,6 +747,7 @@
 												animation={element.legacyAnimation}
 												timelineStyle={timeline.style || undefined}
 												timelineActive={timeline.active}
+												speechTail={speechTailFor(scene, element, progress)}
 											>
 												<Render props={element.block.props} />
 											</BlockFrame>
@@ -669,6 +783,7 @@
 												animation={element.legacyAnimation}
 												timelineStyle={timeline.style || undefined}
 												timelineActive={timeline.active}
+												speechTail={speechTailFor(scene, element, progress)}
 											>
 												<Render props={element.block.props} />
 											</BlockFrame>
@@ -703,6 +818,7 @@
 												animation={element.legacyAnimation}
 												timelineStyle={timeline.style || undefined}
 												timelineActive={timeline.active}
+												speechTail={speechTailFor(scene, element, progress)}
 											>
 												<Render props={element.block.props} />
 											</BlockFrame>
@@ -932,6 +1048,12 @@
 	.zine-free-actor[data-block-type='richText'] :global(.zine-richtext p) {
 		margin: 0;
 	}
+	.zine-free-actor[data-block-type='richText']
+		:global(.zine-block[data-text-frame] .zine-richtext) {
+		font-size: 1rem;
+		line-height: 1.25;
+		text-align: inherit;
+	}
 	.zine-free-actor :global(.zine-image),
 	.zine-free-actor :global(.zine-image img) {
 		max-height: 46cqh;
@@ -1150,9 +1272,14 @@
 	}
 	:global(.zine .zine-block[data-text-color] > .zine-heading),
 	:global(.zine .zine-block[data-text-color] > .zine-richtext),
+	:global(.zine .zine-block[data-text-color] > .zine-text-frame-body > .zine-heading),
+	:global(.zine .zine-block[data-text-color] > .zine-text-frame-body > .zine-richtext),
 	:global(.zine .zine-block[data-text-color] > .zine-richtext h2),
 	:global(.zine .zine-block[data-text-color] > .zine-richtext h3),
-	:global(.zine .zine-block[data-text-color] > .zine-richtext h4) {
+	:global(.zine .zine-block[data-text-color] > .zine-richtext h4),
+	:global(.zine .zine-block[data-text-color] > .zine-text-frame-body > .zine-richtext h2),
+	:global(.zine .zine-block[data-text-color] > .zine-text-frame-body > .zine-richtext h3),
+	:global(.zine .zine-block[data-text-color] > .zine-text-frame-body > .zine-richtext h4) {
 		color: var(--zine-text-color);
 	}
 	:global(.zine .zine-block[data-text-backdrop] > .zine-heading),
@@ -1246,6 +1373,553 @@
 	}
 	:global(.zine .zine-block[data-text-backdrop] > .zine-richtext > :last-child) {
 		margin-bottom: 0;
+	}
+	:global(.zine .zine-block[data-text-frame]) {
+		--zine-frame-stroke: var(--zine-heading, var(--zine-fg));
+		--zine-frame-bg: var(--zine-bg);
+		display: flex;
+		align-items: flex-end;
+		gap: 0.55rem;
+		inline-size: fit-content;
+		max-inline-size: min(var(--zine-measure), calc(100% - 2.5rem));
+		overflow: visible;
+		text-align: left;
+	}
+	:global(.zine .zine-block[data-text-frame][data-frame-fill='paper']) {
+		--zine-frame-bg: var(--zine-bg);
+	}
+	:global(.zine .zine-block[data-text-frame][data-frame-fill='theme']) {
+		--zine-frame-bg: color-mix(in oklch, var(--zine-muted), var(--zine-bg) 84%);
+	}
+	:global(.zine .zine-block[data-text-frame][data-frame-fill='accent']) {
+		--zine-frame-bg: color-mix(in oklch, var(--zine-accent), var(--zine-bg) 76%);
+	}
+	:global(
+		.zine .zine-block[data-text-frame='sms'][data-frame-fill='message'][data-frame-side='incoming']
+	) {
+		--zine-frame-bg: oklch(0.92 0.006 255);
+		--zine-frame-fg: oklch(0.22 0.024 260);
+	}
+	:global(
+		.zine .zine-block[data-text-frame='sms'][data-frame-fill='message'][data-frame-side='outgoing']
+	) {
+		--zine-frame-bg: oklch(0.58 0.215 255);
+		--zine-frame-fg: oklch(0.99 0.004 255);
+	}
+	:global(.zine .zine-block[data-text-frame][data-frame-fill='custom']) {
+		--zine-frame-bg: var(--zine-text-frame-color, var(--zine-bg));
+	}
+	:global(.zine .zine-block[data-text-frame] > .zine-text-frame-body) {
+		position: relative;
+		box-sizing: border-box;
+		max-inline-size: min(30rem, 100%);
+		border: 2px solid var(--zine-frame-stroke);
+		background: var(--zine-frame-bg);
+		color: var(--zine-text-color, var(--zine-frame-fg, var(--zine-fg)));
+		padding-block: calc(0.42rem + var(--zine-text-frame-padding, 1) * 0.28rem);
+		padding-inline: calc(0.55rem + var(--zine-text-frame-padding, 1) * 0.42rem);
+		overflow: visible;
+		overflow-wrap: anywhere;
+	}
+	:global(.zine .zine-block[data-text-frame] > .zine-text-frame-body > :not(.zine-rough-frame)) {
+		position: relative;
+		z-index: 1;
+	}
+	:global(.zine .zine-block[data-text-frame] .zine-richtext),
+	:global(.zine .zine-block[data-text-frame] .zine-heading) {
+		margin-block: 0;
+		max-inline-size: 100%;
+	}
+	:global(.zine .zine-block[data-text-frame] .zine-richtext p:last-child),
+	:global(.zine .zine-block[data-text-frame] .zine-richtext ul:last-child),
+	:global(.zine .zine-block[data-text-frame] .zine-richtext ol:last-child) {
+		margin-bottom: 0;
+	}
+	:global(.zine .zine-block[data-text-frame='speech'] > .zine-text-frame-body) {
+		border-radius: 1.05rem;
+	}
+	:global(
+		.zine .zine-block[data-text-frame='speech'][data-frame-mode='thought'] > .zine-text-frame-body
+	) {
+		border-radius: 999px;
+		padding-inline: calc(0.75rem + var(--zine-text-frame-padding, 1) * 0.58rem);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='speech']:not([data-frame-tail='none'])
+			> .zine-text-frame-body::after
+	) {
+		position: absolute;
+		z-index: 0;
+		width: 1.05rem;
+		height: 1.05rem;
+		background: var(--zine-frame-bg);
+		content: '';
+		rotate: 45deg;
+	}
+	:global(
+		.zine .zine-block[data-text-frame='speech'][data-frame-outline='sketch'] > .zine-text-frame-body
+	) {
+		border-color: transparent;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-outline='sketch']
+			> .zine-text-frame-body::before
+	),
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-outline='sketch']
+			> .zine-text-frame-body::after
+	) {
+		display: none;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-tail='bottom-left']
+			> .zine-text-frame-body::after
+	) {
+		bottom: -0.45rem;
+		left: 1.3rem;
+		border-right: 2px solid var(--zine-frame-stroke);
+		border-bottom: 2px solid var(--zine-frame-stroke);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-tail='bottom-right']
+			> .zine-text-frame-body::after
+	) {
+		right: 1.3rem;
+		bottom: -0.45rem;
+		border-right: 2px solid var(--zine-frame-stroke);
+		border-bottom: 2px solid var(--zine-frame-stroke);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-tail='top-left']
+			> .zine-text-frame-body::after
+	) {
+		top: -0.45rem;
+		left: 1.3rem;
+		border-top: 2px solid var(--zine-frame-stroke);
+		border-left: 2px solid var(--zine-frame-stroke);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-tail='top-right']
+			> .zine-text-frame-body::after
+	) {
+		top: -0.45rem;
+		right: 1.3rem;
+		border-top: 2px solid var(--zine-frame-stroke);
+		border-left: 2px solid var(--zine-frame-stroke);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-tail='top']
+			> .zine-text-frame-body::after
+	) {
+		top: -0.45rem;
+		left: calc(50% - 0.52rem);
+		border-top: 2px solid var(--zine-frame-stroke);
+		border-left: 2px solid var(--zine-frame-stroke);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-tail='right']
+			> .zine-text-frame-body::after
+	) {
+		top: calc(50% - 0.52rem);
+		right: -0.45rem;
+		border-top: 2px solid var(--zine-frame-stroke);
+		border-right: 2px solid var(--zine-frame-stroke);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-tail='bottom']
+			> .zine-text-frame-body::after
+	) {
+		bottom: -0.45rem;
+		left: calc(50% - 0.52rem);
+		border-right: 2px solid var(--zine-frame-stroke);
+		border-bottom: 2px solid var(--zine-frame-stroke);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-tail='left']
+			> .zine-text-frame-body::after
+	) {
+		top: calc(50% - 0.52rem);
+		left: -0.45rem;
+		border-bottom: 2px solid var(--zine-frame-stroke);
+		border-left: 2px solid var(--zine-frame-stroke);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought']
+			> .zine-text-frame-body::before
+	),
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought']
+			> .zine-text-frame-body::after
+	) {
+		position: absolute;
+		border: 2px solid var(--zine-frame-stroke);
+		border-radius: 50%;
+		background: var(--zine-frame-bg);
+		content: '';
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought']
+			> .zine-text-frame-body::before
+	) {
+		bottom: -0.65rem;
+		left: 1.65rem;
+		width: 0.72rem;
+		height: 0.72rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought']
+			> .zine-text-frame-body::after
+	) {
+		bottom: -1.15rem;
+		left: 1.1rem;
+		width: 0.42rem;
+		height: 0.42rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='none']
+			> .zine-text-frame-body::before
+	),
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='none']
+			> .zine-text-frame-body::after
+	) {
+		display: none;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='top-left']
+			> .zine-text-frame-body::before
+	) {
+		top: -0.5rem;
+		bottom: auto;
+		left: 1.4rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='top-left']
+			> .zine-text-frame-body::after
+	) {
+		top: -0.9rem;
+		bottom: auto;
+		left: 0.75rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='top']
+			> .zine-text-frame-body::before
+	) {
+		top: -0.5rem;
+		bottom: auto;
+		left: calc(50% - 0.36rem);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='top']
+			> .zine-text-frame-body::after
+	) {
+		top: -0.95rem;
+		bottom: auto;
+		left: calc(50% - 0.21rem);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='top-right']
+			> .zine-text-frame-body::before
+	) {
+		top: -0.5rem;
+		right: 1.4rem;
+		bottom: auto;
+		left: auto;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='top-right']
+			> .zine-text-frame-body::after
+	) {
+		top: -0.9rem;
+		right: 0.75rem;
+		bottom: auto;
+		left: auto;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='right']
+			> .zine-text-frame-body::before
+	) {
+		top: calc(50% - 0.36rem);
+		right: -0.52rem;
+		bottom: auto;
+		left: auto;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='right']
+			> .zine-text-frame-body::after
+	) {
+		top: calc(50% - 0.21rem);
+		right: -0.98rem;
+		bottom: auto;
+		left: auto;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='bottom-right']
+			> .zine-text-frame-body::before
+	) {
+		right: 1.55rem;
+		left: auto;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='bottom-right']
+			> .zine-text-frame-body::after
+	) {
+		right: 0.95rem;
+		left: auto;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='bottom']
+			> .zine-text-frame-body::before
+	) {
+		left: calc(50% - 0.36rem);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='bottom']
+			> .zine-text-frame-body::after
+	) {
+		left: calc(50% - 0.21rem);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='left']
+			> .zine-text-frame-body::before
+	) {
+		top: calc(50% - 0.36rem);
+		bottom: auto;
+		left: -0.52rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='speech'][data-frame-mode='thought'][data-frame-tail='left']
+			> .zine-text-frame-body::after
+	) {
+		top: calc(50% - 0.21rem);
+		bottom: auto;
+		left: -0.98rem;
+	}
+	:global(.zine .zine-block[data-text-frame='sms']) {
+		inline-size: min(32rem, calc(100% - 2.5rem));
+		max-inline-size: min(32rem, calc(100% - 2.5rem));
+		align-items: flex-end;
+	}
+	:global(.zine .zine-block[data-text-frame='sms'][data-frame-side='incoming']) {
+		margin-inline: 0 auto;
+		justify-content: flex-start;
+	}
+	:global(.zine .zine-block[data-text-frame='sms'][data-frame-side='outgoing']) {
+		margin-inline: auto 0;
+		justify-content: flex-end;
+	}
+	:global(
+		.zine .zine-block[data-text-frame='sms'][data-frame-side='outgoing'] > .zine-text-frame-body
+	) {
+		background: var(--zine-frame-bg);
+		color: var(--zine-text-color, var(--zine-frame-fg, var(--zine-fg)));
+	}
+	:global(.zine .zine-block[data-text-frame='sms'] > .zine-text-frame-body) {
+		max-inline-size: min(24rem, 100%);
+		border: 0;
+		border-radius: 1.15rem;
+		box-shadow: none;
+		font-size: 0.98rem;
+		line-height: 1.32;
+		padding-block: calc(0.36rem + var(--zine-text-frame-padding, 0.8) * 0.18rem);
+		padding-inline: calc(0.62rem + var(--zine-text-frame-padding, 0.8) * 0.28rem);
+	}
+	:global(
+		.zine .zine-block[data-text-frame='sms'][data-frame-group='first'] > .zine-text-frame-body
+	) {
+		border-end-start-radius: 0.42rem;
+	}
+	:global(
+		.zine .zine-block[data-text-frame='sms'][data-frame-group='middle'] > .zine-text-frame-body
+	) {
+		border-start-start-radius: 0.42rem;
+		border-end-start-radius: 0.42rem;
+	}
+	:global(
+		.zine .zine-block[data-text-frame='sms'][data-frame-group='last'] > .zine-text-frame-body
+	) {
+		border-start-start-radius: 0.42rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='outgoing'][data-frame-group='first']
+			> .zine-text-frame-body
+	) {
+		border-end-start-radius: 1.15rem;
+		border-end-end-radius: 0.42rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='outgoing'][data-frame-group='middle']
+			> .zine-text-frame-body
+	) {
+		border-start-start-radius: 1.15rem;
+		border-end-start-radius: 1.15rem;
+		border-start-end-radius: 0.42rem;
+		border-end-end-radius: 0.42rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='outgoing'][data-frame-group='last']
+			> .zine-text-frame-body
+	) {
+		border-start-start-radius: 1.15rem;
+		border-start-end-radius: 0.42rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-group='single']
+			> .zine-text-frame-body::before
+	),
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-group='last']
+			> .zine-text-frame-body::before
+	),
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-group='single']
+			> .zine-text-frame-body::after
+	),
+	:global(
+		.zine .zine-block[data-text-frame='sms'][data-frame-group='last'] > .zine-text-frame-body::after
+	) {
+		position: absolute;
+		bottom: 0;
+		content: '';
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-group='single']
+			> .zine-text-frame-body::after
+	),
+	:global(
+		.zine .zine-block[data-text-frame='sms'][data-frame-group='last'] > .zine-text-frame-body::after
+	) {
+		z-index: 0;
+		width: 0.88rem;
+		height: 0.88rem;
+		background: var(--zine-frame-bg);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-group='single']
+			> .zine-text-frame-body::before
+	),
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-group='last']
+			> .zine-text-frame-body::before
+	) {
+		z-index: 1;
+		width: 0.72rem;
+		height: 1rem;
+		background: var(--zine-bg);
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='incoming'][data-frame-group='single']
+			> .zine-text-frame-body::after
+	),
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='incoming'][data-frame-group='last']
+			> .zine-text-frame-body::after
+	) {
+		left: -0.32rem;
+		border-bottom-right-radius: 0.95rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='incoming'][data-frame-group='single']
+			> .zine-text-frame-body::before
+	),
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='incoming'][data-frame-group='last']
+			> .zine-text-frame-body::before
+	) {
+		left: -0.78rem;
+		border-bottom-right-radius: 0.86rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='outgoing'][data-frame-group='single']
+			> .zine-text-frame-body::after
+	),
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='outgoing'][data-frame-group='last']
+			> .zine-text-frame-body::after
+	) {
+		right: -0.32rem;
+		border-bottom-left-radius: 0.95rem;
+	}
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='outgoing'][data-frame-group='single']
+			> .zine-text-frame-body::before
+	),
+	:global(
+		.zine
+			.zine-block[data-text-frame='sms'][data-frame-side='outgoing'][data-frame-group='last']
+			> .zine-text-frame-body::before
+	) {
+		right: -0.78rem;
+		border-bottom-left-radius: 0.86rem;
+	}
+	:global(.zine .zine-sms-avatar) {
+		flex: 0 0 auto;
+		width: 2rem;
+		height: 2rem;
+		border: 2px solid var(--zine-frame-stroke);
+		border-radius: 50%;
+		object-fit: cover;
+		background: var(--zine-bg);
+	}
+	:global(.zine .zine-sms-sender) {
+		display: block;
+		margin: 0 0 0.2rem 0.25rem;
+		color: color-mix(in oklch, currentColor, transparent 28%);
+		font-size: 0.72rem;
+		font-weight: 800;
+		line-height: 1.1;
+	}
+	:global(.zine .zine-block[data-text-frame='sms'][data-frame-side='outgoing'] .zine-sms-sender) {
+		margin-right: 0.25rem;
+		margin-left: 0;
+		text-align: right;
 	}
 	:global(.zine .zine-heading) {
 		margin: 1.75rem 0 0.75rem;

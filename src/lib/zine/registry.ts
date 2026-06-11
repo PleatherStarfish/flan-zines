@@ -6,6 +6,7 @@ import type { AnyBlockDef, BlockDef } from './schema/block';
 import { headingBlock } from './blocks/heading';
 import { richTextBlock } from './blocks/richText';
 import { imageBlock } from './blocks/image';
+import { characterSpriteBlock } from './blocks/characterSprite';
 import { linkButtonBlock } from './blocks/linkButton';
 import { dividerBlock } from './blocks/divider';
 import { spacerBlock } from './blocks/spacer';
@@ -36,6 +37,7 @@ export function blockTypes(): string[] {
 registerBlock(headingBlock);
 registerBlock(richTextBlock);
 registerBlock(imageBlock);
+registerBlock(characterSpriteBlock);
 registerBlock(linkButtonBlock);
 registerBlock(dividerBlock);
 registerBlock(spacerBlock);

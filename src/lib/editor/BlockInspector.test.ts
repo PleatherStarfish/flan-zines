@@ -75,6 +75,19 @@ function setupRichText() {
 									}
 								},
 								range: { start: 0, end: 1 }
+							},
+							{
+								id: 'el_speaker',
+								track: 'media',
+								block: {
+									id: 'blk_speaker',
+									type: 'image',
+									props: {
+										src: 'https://example.com/speaker.png',
+										alt: 'Maya holding an umbrella'
+									}
+								},
+								range: { start: 0, end: 1 }
 							}
 						]
 					}
@@ -97,6 +110,7 @@ const richTextDoc = (store: EditorStore) =>
 	(store.doc.acts[0].scenes[0].elements[0].block.props as { doc: RichTextDoc }).doc;
 
 const blockStyle = (store: EditorStore) => store.doc.acts[0].scenes[0].elements[0].block.style;
+const firstElement = (store: EditorStore) => store.doc.acts[0].scenes[0].elements[0];
 
 beforeEach(() => localStorage.clear());
 
@@ -176,6 +190,125 @@ describe('BlockInspector', () => {
 		await fireEvent.click(getByRole('button', { name: 'None' }));
 		await fireEvent.click(getByRole('button', { name: 'Save text' }));
 		expect(blockStyle(store)?.textBackdrop).toBeUndefined();
+		store.dispose();
+	});
+
+	it('adds speech and SMS frames from the focused text tools', async () => {
+		const store = setupRichText();
+		const { getByLabelText, getByRole } = render(BlockInspector, {
+			props: { store, element: store.doc.acts[0].scenes[0].elements[0] }
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'Open focused editor' }));
+		await fireEvent.click(getByRole('button', { name: /Other text/ }));
+		await fireEvent.click(getByRole('button', { name: 'Speech bubble' }));
+		await fireEvent.click(getByRole('button', { name: 'Sketchy' }));
+		expect((getByLabelText('Speech bubble points to') as HTMLSelectElement).value).toBe(
+			'el_speaker'
+		);
+		expect(blockStyle(store)?.textFrame).toBeUndefined();
+		await fireEvent.click(getByRole('button', { name: 'Save text' }));
+		expect(blockStyle(store)?.typeset).toEqual({ kind: 'other' });
+		expect(blockStyle(store)?.textFrame).toMatchObject({
+			kind: 'speech',
+			mode: 'speech',
+			outline: 'sketch',
+			tail: 'auto',
+			speakerElementId: 'el_speaker'
+		});
+		expect(firstElement(store).placement).toBe('pinned');
+		expect(firstElement(store).anchor?.region).toBe('center');
+
+		await fireEvent.click(getByRole('button', { name: 'Open focused editor' }));
+		await fireEvent.click(getByRole('button', { name: 'Text message' }));
+		await fireEvent.click(getByRole('button', { name: 'Right side' }));
+		await fireEvent.input(getByLabelText('Sender name'), { target: { value: 'Maya' } });
+		await fireEvent.input(getByLabelText('Sender picture URL'), {
+			target: { value: 'https://example.com/maya.png' }
+		});
+		await fireEvent.click(getByRole('button', { name: 'Save text' }));
+		expect(blockStyle(store)?.textFrame).toMatchObject({
+			kind: 'sms',
+			side: 'outgoing',
+			fill: 'message',
+			senderName: 'Maya',
+			senderAvatar: { src: 'https://example.com/maya.png' }
+		});
+		store.dispose();
+	});
+
+	it('only offers image/gif blocks as speech bubble speakers', async () => {
+		const document = {
+			schemaVersion: 7,
+			theme: {},
+			acts: [
+				{
+					id: 'act_1',
+					scenes: [
+						{
+							id: 'scn_1',
+							type: 'page',
+							length: 'auto',
+							beats: [{ id: 'beat_1', at: 0 }],
+							elements: [
+								{
+									id: 'el_bubble',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'blk_bubble',
+										type: 'richText',
+										props: {
+											doc: { type: 'doc', content: [{ type: 'paragraph', content: [] }] }
+										}
+									}
+								},
+								{
+									id: 'el_decoy_heading',
+									track: 'content',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'blk_decoy',
+										type: 'heading',
+										props: { text: 'Not a speaker', level: 2 }
+									}
+								},
+								{
+									id: 'el_image',
+									track: 'media',
+									range: { start: 0, end: 1 },
+									block: {
+										id: 'blk_image',
+										type: 'image',
+										props: { src: 'https://example.com/cat.gif', alt: 'A talking cat' }
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		} as unknown as ZineDocument;
+		const store = new EditorStore({
+			document,
+			zineId: 'z',
+			baseUpdatedAt: null,
+			save: async (): Promise<SaveResult> => ({ ok: true, clientRev: 1, updatedAt: 't' })
+		});
+		const { getByLabelText, getByRole } = render(BlockInspector, {
+			props: { store, element: store.doc.acts[0].scenes[0].elements[0] }
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'Open focused editor' }));
+		await fireEvent.click(getByRole('button', { name: /Other text/ }));
+		await fireEvent.click(getByRole('button', { name: 'Speech bubble' }));
+
+		const select = getByLabelText('Speech bubble points to') as HTMLSelectElement;
+		const optionValues = [...select.options].map((option) => option.value);
+		// Only the image is offered (plus the empty "No speaker" sentinel). The decoy heading and
+		// the bubble itself are never speakers.
+		expect(optionValues).toEqual(['', 'el_image']);
+		expect(select.value).toBe('el_image');
 		store.dispose();
 	});
 

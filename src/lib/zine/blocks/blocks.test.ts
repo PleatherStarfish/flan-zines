@@ -6,6 +6,7 @@ import { seriousAxeViolations } from '../render/axe-helper';
 import HeadingRender from './heading/Render.svelte';
 import RichTextRender from './richText/Render.svelte';
 import ImageRender from './image/Render.svelte';
+import CharacterSpriteRender from './characterSprite/Render.svelte';
 import LinkButtonRender from './linkButton/Render.svelte';
 import DividerRender from './divider/Render.svelte';
 import SpacerRender from './spacer/Render.svelte';
@@ -32,6 +33,32 @@ describe('core blocks', () => {
 			props: { props: { src: '/x.svg', alt: 'A sleepy cat' } }
 		});
 		expect(container.querySelector('img')?.getAttribute('alt')).toBe('A sleepy cat');
+	});
+
+	it('character sprite renders gif and reduced-motion poster images', () => {
+		const { container } = render(CharacterSpriteRender, {
+			props: {
+				props: {
+					action: 'runRight',
+					size: 'small',
+					source: {
+						src: '/runner.gif',
+						poster: '/runner.png',
+						width: 48,
+						height: 64,
+						frameCount: 4,
+						durationMs: 480
+					},
+					alt: 'A pixel-art student running right'
+				}
+			}
+		});
+		const gif = container.querySelector('.zine-character-sprite__gif');
+		const poster = container.querySelector('.zine-character-sprite__poster');
+		expect(gif?.getAttribute('src')).toBe('/runner.gif');
+		expect(poster?.getAttribute('src')).toBe('/runner.png');
+		expect(gif?.getAttribute('alt')).toBe('A pixel-art student running right');
+		expect(poster?.getAttribute('alt')).toBe('A pixel-art student running right');
 	});
 
 	it('rich text renders marks as safe semantic elements', () => {

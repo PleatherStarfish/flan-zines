@@ -3,6 +3,7 @@
 	import type { EditorStore } from './store.svelte';
 	import type { Element } from '$lib/zine/schema/document';
 	import { getBlock } from '$lib/zine/registry';
+	import type { TextFrameTarget } from '$lib/zine/schema/block';
 	import type { BlockStyle, TextKind } from '$lib/zine/schema/theme';
 	import { textKindForElement } from '$lib/zine/render/typeset';
 
@@ -17,9 +18,35 @@
 		}
 		return element;
 	});
+	const liveScene = $derived.by(() => {
+		for (const act of store.doc.acts) {
+			for (const scene of act.scenes) {
+				if (scene.elements.some((item) => item.id === liveElement.id)) return scene;
+			}
+		}
+		return null;
+	});
 	const block = $derived(liveElement.block);
 	const def = $derived(getBlock(block.type)!);
 	const Inspector = $derived(def.Inspector);
+	// A speech balloon attaches to a *visual subject* — the character or thing that is
+	// "speaking". Only image/character blocks qualify as speakers; text, buttons, and
+	// structural blocks are never offered as attachment targets.
+	const frameTargetOptions = $derived.by((): TextFrameTarget[] => {
+		const scene = liveScene;
+		if (!scene) return [];
+		return scene.elements
+			.filter(
+				(item) =>
+					item.id !== liveElement.id &&
+					(item.block.type === 'image' || item.block.type === 'characterSprite')
+			)
+			.map((item) => ({
+				id: item.id,
+				type: item.block.type,
+				label: targetLabel(item)
+			}));
+	});
 
 	// Local working copy so the user can type freely; only VALID changes are committed
 	// to the document (the contract: inspector writes never corrupt). Keyed by block id
@@ -61,6 +88,39 @@
 	function setAlign(align: NonNullable<BlockStyle['align']>): void {
 		updateStyle({ ...(block.style ?? {}), align });
 	}
+
+	function targetLabel(element: Element): string {
+		const def = getBlock(element.block.type);
+		const prefix = def?.label ?? element.block.type;
+		const detail = blockDetail(element.block.type, element.block.props);
+		return truncate(detail ? `${prefix}: ${detail}` : prefix, 44);
+	}
+
+	function blockDetail(type: string, props: unknown): string {
+		const p = props as Record<string, unknown> | undefined;
+		if (type === 'heading') return typeof p?.text === 'string' ? p.text : '';
+		if (type === 'image') {
+			for (const key of ['alt', 'caption', 'src']) {
+				const value = p?.[key];
+				if (typeof value === 'string' && value.trim()) return value.trim();
+			}
+		}
+		if (type === 'richText') return firstText(p?.doc);
+		return '';
+	}
+
+	function firstText(node: unknown): string {
+		if (!node || typeof node !== 'object') return '';
+		const n = node as { text?: unknown; content?: unknown[] };
+		if (typeof n.text === 'string') return n.text.trim();
+		if (!Array.isArray(n.content)) return '';
+		return n.content.map(firstText).find((text) => text.length > 0) ?? '';
+	}
+
+	function truncate(value: string, max: number): string {
+		const compact = value.replace(/\s+/g, ' ').trim();
+		return compact.length > max ? `${compact.slice(0, max - 3)}...` : compact;
+	}
 </script>
 
 <div class="block-inspector">
@@ -77,6 +137,7 @@
 			{textKind}
 			onTextKindChange={setTextKind}
 			theme={store.doc.theme}
+			{frameTargetOptions}
 		/>
 		{#if error}<p role="alert" class="block-inspector__error">{error}</p>{/if}
 	</section>

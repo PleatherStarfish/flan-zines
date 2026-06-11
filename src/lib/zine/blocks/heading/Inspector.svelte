@@ -2,6 +2,7 @@
 	import { tick, untrack } from 'svelte';
 	import FocusedTextTools from '$lib/editor/FocusedTextTools.svelte';
 	import { defaultContentRole } from '$lib/zine/render/typeset';
+	import type { TextFrameTarget } from '../../schema/block';
 	import type { BlockStyle, TextKind, Theme } from '../../schema/theme';
 	import type { HeadingProps } from './schema';
 
@@ -12,7 +13,8 @@
 		onStyleChange,
 		textKind = 'content',
 		onTextKindChange,
-		theme
+		theme,
+		frameTargetOptions = []
 	}: {
 		value: HeadingProps;
 		onChange: (next: HeadingProps) => void;
@@ -21,6 +23,7 @@
 		textKind?: TextKind;
 		onTextKindChange?: (kind: TextKind) => void;
 		theme?: Theme;
+		frameTargetOptions?: TextFrameTarget[];
 	} = $props();
 
 	const levels = [
@@ -181,6 +184,7 @@
 				style={draftStyle}
 				textKind={draftTextKind}
 				{theme}
+				{frameTargetOptions}
 				onStyleChange={setDraftStyle}
 				onTextKindChange={setDraftTextKind}
 			/>
